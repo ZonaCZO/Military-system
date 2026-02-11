@@ -15,8 +15,8 @@ if fs.exists(netFile) then
 else
     term.clear()
     term.setCursorPos(1,1)
-    print("--- SERVER SETUP ---")
-    print("Create Network ID (e.g. SQUAD_1):")
+    print("--- SERVER CONNECTING ---")
+    print("Enter Network ID (e.g. SQUAD_1):")
     write("> ")
     local input = read()
     if input ~= "" then PROTOCOL = input end
