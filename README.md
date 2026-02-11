@@ -7,16 +7,12 @@ A specialized collection of ComputerCraft programs for secure file management, n
 
 ---
 
-## 📁 Data | File Management & Security
+## 📁 CMD | Commander System
 
-These programs are designed for handling sensitive information, encryption, and physical media operations.
+Intercome for the tactical network.
 
-* **File Encryptor:** Secure your data with custom passkeys.
-`shell.run("pastebin get [CODE] encrypt")` — [подозрительная ссылка удалена]
-* **Disk Burner:** Fast-write utility for moving data to floppy disks.
-`shell.run("pastebin get [CODE] burn")` — [подозрительная ссылка удалена]
-* **Wipe Utility:** Military-grade file deletion (prevents recovery).
-`shell.run("pastebin get [CODE] wipe")` — [подозрительная ссылка удалена]
+* **Installer:** Secure your data with custom passkeys.
+`pastebin run n8duYh1C` — [[Link](https://pastebin.com/n8duYh1C)]
 
 ---
 
@@ -25,10 +21,7 @@ These programs are designed for handling sensitive information, encryption, and 
 The core of the tactical network. This suite manages communication protocols and features an integrated defense system to prevent unauthorized access.
 
 * **Net-Control:** Central hub for military network traffic.
-`shell.run("pastebin get [CODE] netctrl")` — [подозрительная ссылка удалена]
-* **Firewall V1:** Active monitoring and unauthorized terminal lockout.
-`shell.run("pastebin get [CODE] wall")` — [подозрительная ссылка удалена]
-* *Note: Network functionality is currently in active development. New modules coming soon.*
+`pastebin run L3Vpkg1G` — [[Link](https://pastebin.com/L3Vpkg1G)]
 
 ---
 
@@ -37,9 +30,7 @@ The core of the tactical network. This suite manages communication protocols and
 Specific patches designed to transform a standard Pocket Computer (PDA) into a military-grade tool.
 
 * **Tactical OS Patch:** Overhauls the PDA interface for field operations.
-`shell.run("pastebin get [CODE] patch")` — [подозрительная ссылка удалена]
-* **Field Comms:** Encrypted short-range messaging for soldiers.
-`shell.run("pastebin get [CODE] comms")` — [подозрительная ссылка удалена]
+`pastebin run 6RnCB7Fn` — [[Link](https://pastebin.com/6RnCB7Fn)]
 
 ---
 
