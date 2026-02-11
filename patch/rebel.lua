@@ -1,5 +1,5 @@
--- === PDA V12.0 (RC4) ===
--- [ENCRYPTION CLIENT]
+-- === PDA V12.1 (SECURE STORAGE) ===
+-- [RC4 ENCRYPTED SESSION FILE]
 
 local modem = peripheral.find("modem")
 if not modem then error("No Wireless Modem!") end
@@ -27,7 +27,7 @@ end
 -- === НАСТРОЙКА ===
 local PROTOCOL = "default_net"
 local KEY = "none"
-local netFile = "net_config.txt"
+local netFile = ".net_config.txt"
 
 if fs.exists(netFile) then
     local f = fs.open(netFile, "r")
@@ -69,10 +69,16 @@ local function promptInput(promptText)
 end
 
 local function login()
-    if fs.exists("session.txt") then
-        local f = fs.open("session.txt", "r")
-        local savedData = textutils.unserialize(f.readAll())
+    -- !!! ЧТЕНИЕ ЗАШИФРОВАННОЙ СЕССИИ !!!
+    if fs.exists("session.dat") then
+        local f = fs.open("session.dat", "r")
+        local rawData = f.readAll()
         f.close()
+        
+        -- Попытка расшифровать
+        local decryptedJson = crypt(rawData, KEY)
+        local savedData = textutils.unserialize(decryptedJson)
+        
         if savedData and savedData.id then
             myProfile = savedData
             if not serverID then serverID = rednet.lookup(PROTOCOL, "central_core") end
@@ -84,6 +90,11 @@ local function login()
                 end
             end
             return
+        else
+            -- Если расшифровка не удалась (сменился ключ или файл битый)
+            print("Session corrupted or key changed.")
+            fs.delete("session.dat")
+            sleep(1)
         end
     end
 
@@ -108,8 +119,12 @@ local function login()
                 myProfile.pass = inputPass
                 currentObj = crypt(msg.obj, KEY)
                 
-                local f = fs.open("session.txt", "w")
-                f.write(textutils.serialize(myProfile))
+                -- !!! СОХРАНЕНИЕ ЗАШИФРОВАННОЙ СЕССИИ !!!
+                local cleanJson = textutils.serialize(myProfile)
+                local encryptedData = crypt(cleanJson, KEY)
+                
+                local f = fs.open("session.dat", "w") -- Расширение .dat для красоты
+                f.write(encryptedData)
                 f.close()
                 return
             else
@@ -137,7 +152,7 @@ local function addLog(text, color)
 end
 
 local function sendPacket(text)
-    local encText = crypt(text, KEY) -- Шифруем
+    local encText = crypt(text, KEY)
     rednet.send(serverID, {type = "REPORT", userID=myProfile.id, text = encText}, PROTOCOL)
     addLog("ME: " .. text, colors.white)
 end
@@ -226,7 +241,7 @@ local function inputLoop()
                 drawUI()
             end
         elseif activeTab == "PROFILE" and key == keys.l then
-            fs.delete("session.txt"); os.reboot()
+            fs.delete("session.dat"); os.reboot()
         end
     end
 end
@@ -256,4 +271,4 @@ local function netLoop()
 end
 
 drawUI()
-parallel.waitForAny(inputLoop, netLoop)
+parallel.waitForAny(inputLoop, netLoop) 

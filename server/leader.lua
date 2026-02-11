@@ -27,7 +27,7 @@ end
 -- === НАСТРОЙКА ===
 local PROTOCOL = "default_net"
 local KEY = "none"
-local netFile = "net_config.txt"
+local netFile = ".net_config.txt"
 
 if fs.exists(netFile) then
     local f = fs.open(netFile, "r")
