@@ -5,12 +5,38 @@ local modem = peripheral.find("modem")
 if not modem then error("No Wireless Modem!") end
 rednet.open(peripheral.getName(modem))
 
-local PROTOCOL = "nipaya_net"
-if fs.exists("net_config.txt") then
-    local f = fs.open("net_config.txt", "r")
+local PROTOCOL = "default_net" -- Значение по умолчанию, если ничего не введут
+local netFile = "net_config.txt"
+
+if fs.exists(netFile) then
+    -- Если конфиг есть — читаем его
+    local f = fs.open(netFile, "r")
     PROTOCOL = f.readAll()
     f.close()
+else
+    -- Если конфига нет — СОЗДАЕМ
+    term.clear()
+    term.setCursorPos(1,1)
+    print("--- SERVER SETUP ---")
+    print("Create Network ID (e.g. ALPHA_NET):")
+    write("> ")
+    local input = read()
+    
+    -- Если ввели текст, используем его. Если просто Enter — оставим дефолт.
+    if input ~= "" then 
+        PROTOCOL = input 
+    end
+    
+    -- Сохраняем в файл
+    local f = fs.open(netFile, "w")
+    f.write(PROTOCOL)
+    f.close()
+    
+    print("Network ID saved: " .. PROTOCOL)
+    sleep(1)
 end
+
+rednet.host(PROTOCOL, "central_core")
 
 local serverID = rednet.lookup(PROTOCOL, "central_core")
 local myProfile = nil -- Профиль загрузится с сервера
