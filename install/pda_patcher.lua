@@ -99,7 +99,7 @@ else
         s.writeLine('shell.run("rebel.lua")')
         s.close()
         
-        disk.setLabel(driveSide, "NIPAYA PDA")
+        disk.setLabel(driveSide, "PDA")
         term.setTextColor(colors.green)
         print("\nINSTALLATION COMPLETE.")
         term.setTextColor(colors.white)
