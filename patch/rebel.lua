@@ -1,4 +1,4 @@
--- === NIPAYA PDA V11.0 ===
+-- === PDA V11.0 ===
 -- [Advanced UI: Menus + Time + Custom Msg]
 
 local modem = peripheral.find("modem")
