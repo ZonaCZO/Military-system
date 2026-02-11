@@ -28,10 +28,12 @@ print("Installation complete.")
 
 print("Configuring auto-boot...")
 local f = fs.open("startup.lua", "w")
-if choice == "2" then
-    f.write('shell.run("server")')
-elseif choice == "1" then
+if choice == "1" then
     f.write('shell.run("fg", "commander")')
+    print("1")
+elseif choice == "1" then
+    f.write('shell.run("server")')
+    print("2")
 end
 f.close()
 
