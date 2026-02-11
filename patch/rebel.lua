@@ -28,7 +28,6 @@ else
     sleep(1)
 end
 
-local serverID = rednet.lookup(PROTOCOL, "central_core")
 local myProfile = nil
 local currentObj = "Connecting..."
 
