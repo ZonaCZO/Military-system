@@ -1,4 +1,4 @@
--- === NIPAYA GPS TRACKER (Callsign Ed.) ===
+-- === GPS TRACKER (Callsign Ed.) ===
 -- Запускать: "bg tracker_v2"
 
 local modem = peripheral.find("modem")

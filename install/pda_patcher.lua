@@ -1,9 +1,16 @@
--- === TACTICAL PDA DEPLOYMENT TOOL ===
--- [Installs Tracker & Rebel via Network]
+-- === TACTICAL PDA DEPLOYMENT TOOL (GITHUB) ===
+-- [Installs Tracker & Rebel via GitHub]
 
+-- Используем RAW ссылки, чтобы скачать чистый код, а не веб-страницу
 local pdaFiles = {
-    {name = "tracker.lua", id = "bWqPWJjc"},
-    {name = "rebel.lua",   id = "yXnA1kc2"}
+    {
+        name = "tracker.lua", 
+        url = "https://raw.githubusercontent.com/ZonaCZO/Military-system/main/patch/tracker.lua"
+    },
+    {
+        name = "rebel.lua",   
+        url = "https://raw.githubusercontent.com/ZonaCZO/Military-system/main/patch/rebel.lua"
+    }
 }
 
 local driveSide = nil
@@ -17,66 +24,88 @@ for _, side in ipairs(rs.getSides()) do
 end
 
 if not driveSide then
-    -- Если дисковода нет, ставим на само устройство (для ручного обновления)
-    print("No Disk Drive found. Installing to local system...")
+    -- === ЛОКАЛЬНАЯ УСТАНОВКА (ЕСЛИ НЕТ ДИСКОВОДА) ===
+    term.clear()
+    term.setCursorPos(1,1)
+    print("No Disk Drive found.")
+    print("Installing to THIS device...")
     print("Proceed? (y/n)")
     if read() ~= "y" then error("Aborted.") end
     
     for _, file in ipairs(pdaFiles) do
         print("Downloading " .. file.name .. "...")
-        shell.run("pastebin", "get", file.id, file.name)
+        -- Удаляем старый файл, если есть
+        if fs.exists(file.name) then fs.delete(file.name) end
+        -- Скачиваем новый через wget
+        shell.run("wget", file.url, file.name)
     end
     
-    -- Создаем стартап для солдата
+    -- Создаем стартап локально
+    print("Configuring startup...")
     local f = fs.open("startup.lua", "w")
-    s.write('shell.run("background tracker.lua")')
-    f.write('shell.run("rebel.lua")')
+    f.writeLine('shell.run("bg tracker.lua")') -- Запуск трекера в фоне
+    f.writeLine('shell.run("rebel.lua")')      -- Запуск основной программы
     f.close()
     
-    print("Done. Rebooting.")
+    print("Done. Rebooting...")
     sleep(1)
     os.reboot()
 else
-    -- Режим "Фабрики КПК" (через дисковод)
+    -- === ФАБРИКА КПК (ЧЕРЕЗ ДИСКОВОД) ===
     while true do
         term.clear()
-        print("=== PDA FACTORY (NET-INSTALL) ===")
+        term.setCursorPos(1,1)
+        print("=== PDA FACTORY (GITHUB) ===")
+        print("Source: ZonaCZO/Military-system")
+        print("-----------------------------")
         print("Insert Disk/PDA into drive...")
         
+        -- Ждем диск
         while not disk.isPresent(driveSide) do sleep(0.5) end
         
         local path = disk.getMountPath(driveSide)
         print("Drive detected at: " .. path)
         print("Wiping old data...")
         
-        -- Очистка диска
+        -- Полная очистка диска
         local list = fs.list(path)
         for _, file in ipairs(list) do
             fs.delete(fs.combine(path, file))
         end
         
-        -- Скачивание файлов прямо на диск
+        -- Скачивание файлов
         print("Installing firmware...")
         for _, file in ipairs(pdaFiles) do
             local fullPath = fs.combine(path, file.name)
             print(" -> " .. file.name)
-            -- Используем shell.run, но перемещаем файл после скачивания
-            -- Или скачиваем во временную папку и копируем
-            shell.run("pastebin", "get", file.id, "temp_file")
-            fs.move("temp_file", fullPath)
+            
+            -- Скачиваем во временный файл, потом перемещаем на диск
+            -- Это надежнее, чем качать напрямую на диск иногда
+            shell.run("wget", file.url, "temp_download")
+            
+            if fs.exists("temp_download") then
+                fs.move("temp_download", fullPath)
+            else
+                term.setTextColor(colors.red)
+                print("Download FAILED for " .. file.name)
+                term.setTextColor(colors.white)
+                sleep(2)
+            end
         end
         
         -- Создание startup на диске
         local s = fs.open(fs.combine(path, "startup.lua"), "w")
-        s.write('shell.run("background tracker.lua")')
-        s.write('shell.run("rebel.lua")')
+        s.writeLine('shell.run("bg tracker.lua")')
+        s.writeLine('shell.run("rebel.lua")')
         s.close()
         
         disk.setLabel(driveSide, "NIPAYA PDA")
         term.setTextColor(colors.green)
         print("\nINSTALLATION COMPLETE.")
         term.setTextColor(colors.white)
-        print("Ejecting...")
+        print("You may eject the device.")
+        
+        -- Ждем, пока диск вытащат (или выкидываем сами)
         disk.eject(driveSide)
         sleep(2)
     end
