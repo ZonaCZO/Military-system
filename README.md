@@ -43,4 +43,6 @@ Specific patches designed to transform a standard Pocket Computer (PDA) into a m
 
 ---
 
-**PS:** if you see some russian words in code, i know about this but i am lazy ass and i will translate in other lang later. And if you have some questions, i can answer on ru, ua and eng languages.
+**PS:** if you see some russian words in code, i know about this but i am lazy ass and i will translate in other lang later. 
+
+If you have some questions, i can answer on ru, ua and eng languages. Discord: zonaczo; Email: nikitaprox93@gmail.com
