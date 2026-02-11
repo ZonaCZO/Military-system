@@ -1,11 +1,32 @@
--- === NIPAYA FIELD TERMINAL V6.1 ===
--- [Full Info Header Restored]
+-- === FIELD TERMINAL V7.0 ===
+-- [Universal Network Support]
 
 local modem = peripheral.find("modem")
 if not modem then error("No Wireless Modem!") end
 rednet.open(peripheral.getName(modem))
 
-local serverID = rednet.lookup("nipaya_net", "central_core")
+-- === НАСТРОЙКА СЕТИ ===
+local PROTOCOL = "nipaya_net"
+local netFile = "net_config.txt"
+
+if fs.exists(netFile) then
+    local f = fs.open(netFile, "r")
+    PROTOCOL = f.readAll()
+    f.close()
+else
+    term.clear()
+    term.setCursorPos(1,1)
+    print("--- NETWORK SETUP ---")
+    print("Enter Network ID (Must match Server):")
+    write("> ")
+    local input = read()
+    if input ~= "" then PROTOCOL = input end
+    local f = fs.open(netFile, "w")
+    f.write(PROTOCOL)
+    f.close()
+end
+
+local serverID = rednet.lookup(PROTOCOL, "central_core")
 local profile = {}
 local mySquad = ""
 
@@ -31,7 +52,7 @@ end
 local function login()
     setupProfile()
     if not serverID then 
-        serverID = rednet.lookup("nipaya_net", "central_core")
+        serverID = rednet.lookup(PROTOCOL, "central_core")
         if not serverID then serverID = os.getComputerID() end 
     end
 
@@ -40,7 +61,7 @@ local function login()
         term.setBackgroundColor(colors.black)
         term.clear()
         term.setCursorPos(1,1)
-        print("--- SQUAD LOGIN ---")
+        print("--- SQUAD LOGIN ["..PROTOCOL.."] ---")
         print("User: " .. profile.rank .. " " .. profile.callsign)
         if msgError ~= "" then
             term.setTextColor(colors.red)
@@ -54,8 +75,8 @@ local function login()
         local sPass = read("*")
         
         print("Connecting...")
-        rednet.send(serverID, {type="LOGIN", squad=sName, pass=sPass, role="SOLDIER"}, "nipaya_net")
-        local id, response = rednet.receive("nipaya_net", 3)
+        rednet.send(serverID, {type="LOGIN", squad=sName, pass=sPass, role="SOLDIER"}, PROTOCOL)
+        local id, response = rednet.receive(PROTOCOL, 3)
         if response and response.type == "AUTH" and response.res then
             mySquad = sName
             return response.obj
@@ -78,27 +99,22 @@ local function drawUI()
     term.clear()
     local w, h = term.getSize()
     
-    -- ШАПКА (ВЕРНУЛИ ИНФОРМАЦИЮ)
     term.setCursorPos(1,1)
     term.setBackgroundColor(colors.gray)
     term.setTextColor(colors.white)
     term.clearLine()
-    -- Строка 1: Звание Имя "Позывной"
     print(profile.rank .. " " .. profile.name .. " \"" .. profile.callsign .. "\"")
     
     term.setCursorPos(1,2)
     term.clearLine()
-    -- Строка 2: Нация | Отряд | Время
     local time = textutils.formatTime(os.time(), true)
     print(profile.nation .. " | SQD: " .. mySquad .. " | " .. time)
     
-    -- ПРИКАЗЫ
     term.setBackgroundColor(colors.black)
     term.setCursorPos(1, 4)
     term.setTextColor(colors.yellow)
     print("OBJ: " .. currentObj)
     
-    -- ЛОГ
     term.setCursorPos(1, 6)
     term.setTextColor(colors.gray)
     print("--- SQUAD FEED ---")
@@ -110,7 +126,6 @@ local function drawUI()
         y = y + 1
     end
 
-    -- МЕНЮ
     term.setCursorPos(1, h-3)
     term.setTextColor(colors.gray)
     print("----------------------------")
@@ -120,7 +135,7 @@ local function drawUI()
 end
 
 local function sendPacket(text)
-    rednet.send(serverID, {type = "REPORT", squad = mySquad, callsign = profile.callsign, rank = profile.rank, text = text}, "nipaya_net")
+    rednet.send(serverID, {type = "REPORT", squad = mySquad, callsign = profile.callsign, rank = profile.rank, text = text}, PROTOCOL)
     addLog("SENT: " .. text, colors.gray)
     drawUI()
 end
@@ -152,7 +167,7 @@ end
 
 local function netLoop()
     while true do
-        local id, msg = rednet.receive("nipaya_net")
+        local id, msg = rednet.receive(PROTOCOL)
         if msg and msg.type == "CHAT_LINE" then
             if msg.channel == "GLOBAL" then
                  if msg.color == colors.yellow then

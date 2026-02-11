@@ -1,9 +1,30 @@
--- === NIPAYA COMMANDER TABLET V6.2 ===
--- [FIFO Logs + Duplicate Fix Support]
+-- === COMMANDER TABLET V7.0 ===
+-- [Universal Network Support]
 
 local modem = peripheral.find("modem")
 if not modem then error("No Wireless Modem!") end
 rednet.open(peripheral.getName(modem))
+
+-- === НАСТРОЙКА СЕТИ ===
+local PROTOCOL = "nipaya_net"
+local netFile = "net_config.txt"
+
+if fs.exists(netFile) then
+    local f = fs.open(netFile, "r")
+    PROTOCOL = f.readAll()
+    f.close()
+else
+    term.clear()
+    term.setCursorPos(1,1)
+    print("--- NETWORK SETUP ---")
+    print("Enter Network ID (Must match Server):")
+    write("> ")
+    local input = read()
+    if input ~= "" then PROTOCOL = input end
+    local f = fs.open(netFile, "w")
+    f.write(PROTOCOL)
+    f.close()
+end
 
 local serverID = nil 
 local myCallsign = ""
@@ -28,7 +49,7 @@ local function login()
         term.setBackgroundColor(colors.black)
         term.clear()
         term.setCursorPos(1,1)
-        print("--- CMD LOGIN ---")
+        print("--- CMD LOGIN ["..PROTOCOL.."] ---")
         if msgText ~= "" then print(msgText) end
         
         write("Command Squad (ALPHA): ")
@@ -36,28 +57,25 @@ local function login()
         write("Password: ")
         local pass = read("*")
         
-        serverID = rednet.lookup("nipaya_net", "central_core")
+        serverID = rednet.lookup(PROTOCOL, "central_core")
         if not serverID then serverID = os.getComputerID() end 
         
-        rednet.send(serverID, {type="LOGIN", squad=targetSquad, pass=pass, role="COMMANDER"}, "nipaya_net")
-        local id, msg = rednet.receive("nipaya_net", 3)
+        rednet.send(serverID, {type="LOGIN", squad=targetSquad, pass=pass, role="COMMANDER"}, PROTOCOL)
+        local id, msg = rednet.receive(PROTOCOL, 3)
         if msg and msg.type == "AUTH" and msg.res then return msg.obj else msgText = "Access Denied" end
     end
 end
 
 local currentObj = login()
 
--- === СИСТЕМА ЛОГОВ (FIFO) ===
+-- === ЛОГИ ===
 local squadLogs = {} 
 local cmdLogs = {}   
 local activeTab = "SQUAD" 
 
--- Функция добавления: удаляет старое, если больше 11 сообщений
 local function addLog(targetTable, text, color)
     table.insert(targetTable, {text=text, color=color})
-    if #targetTable > 11 then 
-        table.remove(targetTable, 1) -- Удаляем самое верхнее
-    end
+    if #targetTable > 11 then table.remove(targetTable, 1) end
 end
 
 local function drawUI()
@@ -65,7 +83,6 @@ local function drawUI()
     term.clear()
     local w, h = term.getSize()
     
-    -- ВКЛАДКИ
     term.setCursorPos(1,1)
     if activeTab == "SQUAD" then
         term.setBackgroundColor(colors.green)
@@ -83,16 +100,13 @@ local function drawUI()
         write(" CMD CHAT ")
     end
     
-    -- ПРИКАЗ
     term.setBackgroundColor(colors.black)
     term.setCursorPos(1, 3)
     term.setTextColor(colors.yellow)
     print("OBJ: " .. currentObj)
     
-    -- ЧАТ (ОТРИСОВКА)
     local list = (activeTab == "SQUAD") and squadLogs or cmdLogs
-    local y = 5 -- Начало чата
-    
+    local y = 5
     for _, msg in ipairs(list) do
         if y < h-2 then
             term.setCursorPos(1, y)
@@ -102,38 +116,28 @@ local function drawUI()
         end
     end
     
-    -- ФУТЕР
     term.setCursorPos(1, h-1)
     term.setTextColor(colors.gray)
     print(string.rep("=", w))
     term.setTextColor(colors.white)
     
-    if activeTab == "SQUAD" then
-        write("[Enter]Msg  [O]rders  [Tab]Switch")
-    else
-        write("[Enter]Secure Msg  [Tab]Switch")
-    end
+    if activeTab == "SQUAD" then write("[Enter]Msg  [O]rders  [Tab]Switch")
+    else write("[Enter]Secure Msg  [Tab]Switch") end
 end
 
 local function netLoop()
     while true do
-        local id, msg = rednet.receive("nipaya_net")
+        local id, msg = rednet.receive(PROTOCOL)
         if msg and msg.type == "CHAT_LINE" then
-            
-            -- Звук входящего сообщения
             if (activeTab == "CMD" and msg.channel ~= "CMD") or 
                (activeTab == "SQUAD" and msg.channel == "CMD") then
                 local s = peripheral.find("speaker")
                 if s then s.playNote("hat", 1, 15) end
             end
 
-            -- Распределение по вкладкам
-            if msg.channel == "CMD" then
-                addLog(cmdLogs, msg.text, msg.color)
-            elseif msg.channel == "GLOBAL" then
-                addLog(squadLogs, msg.text, msg.color) 
-            elseif msg.channel == "SQUAD" and msg.targetSquad == targetSquad then
-                addLog(squadLogs, msg.text, msg.color)
+            if msg.channel == "CMD" then addLog(cmdLogs, msg.text, msg.color)
+            elseif msg.channel == "GLOBAL" then addLog(squadLogs, msg.text, msg.color) 
+            elseif msg.channel == "SQUAD" and msg.targetSquad == targetSquad then addLog(squadLogs, msg.text, msg.color)
             end
             drawUI()
         end
@@ -155,7 +159,7 @@ local function inputLoop()
             write("SET OBJ: ")
             local txt = read()
             if txt ~= "" then
-                rednet.send(serverID, {type="SET_OBJ", text=txt, key="Freedom"}, "nipaya_net")
+                rednet.send(serverID, {type="SET_OBJ", text=txt, key="Freedom"}, PROTOCOL)
             end
             drawUI()
             
@@ -166,14 +170,14 @@ local function inputLoop()
                 write("TO " .. targetSquad .. ": ")
                 local txt = read()
                 if txt ~= "" then
-                    rednet.send(serverID, {type="SQUAD_CMD", text=txt, callsign=myCallsign, squad=targetSquad}, "nipaya_net")
+                    rednet.send(serverID, {type="SQUAD_CMD", text=txt, callsign=myCallsign, squad=targetSquad}, PROTOCOL)
                 end
             else
                 term.setTextColor(colors.cyan)
                 write("TO COMMAND: ")
                 local txt = read()
                 if txt ~= "" then
-                    rednet.send(serverID, {type="CMD_CHAT", text=txt, callsign=myCallsign}, "nipaya_net")
+                    rednet.send(serverID, {type="CMD_CHAT", text=txt, callsign=myCallsign}, PROTOCOL)
                 end
             end
             drawUI()
