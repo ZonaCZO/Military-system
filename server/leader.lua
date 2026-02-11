@@ -18,7 +18,7 @@ else
     term.clear()
     term.setCursorPos(1,1)
     print("--- SERVER SETUP ---")
-    print("Create Network ID (e.g. ALPHA_NET):")
+    print("Enter ID (e.g. ALPHA_NET):")
     write("> ")
     local input = read()
     
