@@ -1,4 +1,4 @@
-# CC-Military-Suite
+# CC-Military Strategic System
 
 A specialized collection of ComputerCraft programs for secure file management, networking, and tactical PDA enhancements.
 
