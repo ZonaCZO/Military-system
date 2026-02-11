@@ -36,6 +36,26 @@ else
     sleep(1)
 end
 
+print("Checking network integrity...")
+local existingID = rednet.lookup(PROTOCOL, "central_core")
+
+if existingID then
+    term.setBackgroundColor(colors.black)
+    term.clear()
+    term.setCursorPos(1,1)
+    term.setTextColor(colors.red)
+    print("!!! CRITICAL ERROR !!!")
+    print("----------------------")
+    print("A SERVER IS ALREADY RUNNING!")
+    print("Network: " .. PROTOCOL)
+    print("Conflict ID: " .. existingID)
+    print("")
+    print("You cannot have two servers")
+    print("with the same Network ID.")
+    print("----------------------")
+    error("Startup Aborted: Duplicate Server")
+end
+
 rednet.host(PROTOCOL, "central_core")
 
 -- === ДАННЫЕ ===
