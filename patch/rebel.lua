@@ -1,5 +1,5 @@
--- === PDA V10.1 (SOLDIER FIX) ===
--- [Role sending fix]
+-- === NIPAYA PDA V11.0 ===
+-- [Advanced UI: Menus + Time + Custom Msg]
 
 local modem = peripheral.find("modem")
 if not modem then error("No Wireless Modem!") end
@@ -16,6 +16,7 @@ local serverID = rednet.lookup(PROTOCOL, "central_core")
 local myProfile = nil
 local currentObj = "Connecting..."
 
+-- === ЛОГИН ===
 local function login()
     -- 1. Авто-вход
     if fs.exists("session.txt") then
@@ -26,7 +27,6 @@ local function login()
             myProfile = savedData
             if not serverID then serverID = rednet.lookup(PROTOCOL, "central_core") end
             if serverID then 
-                -- !FIX: Добавлено role="SOLDIER"
                 rednet.send(serverID, {type="LOGIN", userID=myProfile.id, userPass=myProfile.pass, role="SOLDIER"}, PROTOCOL)
                 local _, msg = rednet.receive(PROTOCOL, 2)
                 if msg and msg.type=="AUTH_OK" then currentObj = msg.obj end
@@ -50,7 +50,6 @@ local function login()
         if not serverID then serverID = rednet.lookup(PROTOCOL, "central_core") end
         
         if serverID then
-            -- !FIX: Добавлено role="SOLDIER" чтобы сервер не падал
             rednet.send(serverID, {type="LOGIN", userID=inputID, userPass=inputPass, role="SOLDIER"}, PROTOCOL)
             local id, msg = rednet.receive(PROTOCOL, 3)
             
@@ -79,18 +78,39 @@ end
 
 login()
 
--- === UI И ЛОГИКА ===
-local activeTab = "TACTICAL"
+-- === UI STATE ===
+local activeTab = "TACTICAL" -- "TACTICAL" или "PROFILE"
+local menuState = "MAIN"     -- "MAIN" или "ALERTS" (внутри тактики)
 local logHistory = {}
 
 local function addLog(text, color)
-    table.insert(logHistory, {text=text, color=color or colors.green})
+    -- Время сообщения
+    local t = textutils.formatTime(os.time(), true)
+    table.insert(logHistory, {text=text, color=color or colors.green, time=t})
     if #logHistory > 8 then table.remove(logHistory, 1) end
+end
+
+-- Вспомогательная функция для ввода текста
+local function promptInput(promptText)
+    local w, h = term.getSize()
+    -- Рисуем поле ввода поверх всего внизу
+    paintutils.drawFilledBox(1, h-2, w, h, colors.black)
+    term.setCursorPos(1, h-1)
+    term.setTextColor(colors.yellow)
+    write(promptText)
+    term.setTextColor(colors.white)
+    return read()
+end
+
+local function sendPacket(text, visualColor)
+    rednet.send(serverID, {type = "REPORT", userID=myProfile.id, text = text}, PROTOCOL)
+    addLog("ME: " .. text, colors.white)
 end
 
 local function drawUI()
     local w, h = term.getSize()
     
+    -- === 1. ВЕРХНИЙ БАР (ОБЩИЙ) ===
     term.setCursorPos(1,1)
     if activeTab == "TACTICAL" then
         term.setBackgroundColor(colors.blue)
@@ -107,41 +127,79 @@ local function drawUI()
         term.setTextColor(colors.white)
         write(" PROFILE ")
     end
-    term.setBackgroundColor(colors.gray)
-    write(string.rep(" ", w - 18))
     
+    -- Заливка и время
+    term.setBackgroundColor(colors.gray)
+    local timeStr = textutils.formatTime(os.time(), true)
+    local spaceLen = w - 18 - #timeStr
+    if spaceLen < 0 then spaceLen = 0 end
+    write(string.rep(" ", spaceLen))
+    term.setTextColor(colors.white)
+    write(timeStr)
+    
+    -- === 2. СОДЕРЖИМОЕ ===
     if activeTab == "TACTICAL" then
         paintutils.drawFilledBox(1, 2, w, h, colors.black)
+        
+        -- Задача
         term.setCursorPos(1, 2)
         term.setTextColor(colors.yellow)
         print("OBJ: " .. string.sub(currentObj, 1, w-5))
         
-        local y = 4
-        for _, item in ipairs(logHistory) do
-            term.setCursorPos(1, y)
-            term.setTextColor(item.color)
-            print(item.text)
-            y = y + 1
+        -- Если мы в главном меню тактики - показываем логи
+        if menuState == "MAIN" then
+            local y = 4
+            for _, item in ipairs(logHistory) do
+                if y < h-3 then
+                    term.setCursorPos(1, y)
+                    term.setTextColor(item.color)
+                    print(item.text)
+                    y = y + 1
+                end
+            end
+            
+            -- Кнопки главного меню (внизу)
+            local btnY = h-2
+            -- Кнопка 1: Меню оповещений
+            paintutils.drawFilledBox(1, btnY, w/2, h-1, colors.red)
+            term.setCursorPos(2, btnY) 
+            term.setTextColor(colors.white)
+            term.setBackgroundColor(colors.red)
+            write("1.ALERTS")
+            
+            -- Кнопка 2: Сообщение
+            paintutils.drawFilledBox(w/2+1, btnY, w, h-1, colors.blue)
+            term.setCursorPos(w/2+2, btnY)
+            term.setBackgroundColor(colors.blue)
+            write("2.MSG")
+            
+            -- Футер
+            term.setBackgroundColor(colors.black)
+            term.setTextColor(colors.gray)
+            term.setCursorPos(1, h)
+            write("TAB: Switch Tab")
+            
+        elseif menuState == "ALERTS" then
+            -- МЕНЮ ВЫБОРА ОПОВЕЩЕНИЙ
+            term.setCursorPos(1, 4)
+            term.setTextColor(colors.white)
+            print("SELECT ALERT TYPE:")
+            
+            term.setTextColor(colors.cyan)   print(" 1. REQUEST..")
+            term.setTextColor(colors.magenta)print(" 2. INJURY (S.O.S)")
+            term.setTextColor(colors.orange) print(" 3. CAPTURE..")
+            term.setTextColor(colors.red)    print(" 4. CONTACT..")
+            print("")
+            term.setTextColor(colors.lightGray) print(" 5. < BACK")
+            
+            -- Футер
+            term.setBackgroundColor(colors.black)
+            term.setCursorPos(1, h)
+            write("Select 1-5")
         end
         
-        local btnY = h
-        paintutils.drawFilledBox(1, btnY, w/3, btnY, colors.red)
-        term.setCursorPos(2, btnY) 
-        term.setTextColor(colors.white)
-        term.setBackgroundColor(colors.red)
-        write("1.CONTACT")
-        
-        paintutils.drawFilledBox(w/3+1, btnY, w/3*2, btnY, colors.green)
-        term.setCursorPos(w/3+2, btnY)
-        term.setBackgroundColor(colors.green)
-        write("2.CLEAR")
-        
-        paintutils.drawFilledBox(w/3*2+1, btnY, w, btnY, colors.magenta)
-        term.setCursorPos(w/3*2+2, btnY)
-        term.setBackgroundColor(colors.magenta)
-        write("3.MEDIC")
-        
     else
+        -- === ПРОФИЛЬ ===
         paintutils.drawFilledBox(1, 2, w, h, colors.white)
         term.setTextColor(colors.black)
         term.setBackgroundColor(colors.white)
@@ -159,14 +217,20 @@ local function drawUI()
         print("SQUAD:  " .. myProfile.squad)
         
         local px = w - 8
-        paintutils.drawBox(px, 3, px+6, 7, colors.black)
-        term.setCursorPos(px+1, 4) write(" O  ")
-        term.setCursorPos(px+1, 5) write("/|\\ ")
-        term.setCursorPos(px+1, 6) write("/ \\ ")
+        if px > 10 then -- Рисуем только если экран широкий
+            paintutils.drawBox(px, 3, px+6, 7, colors.black)
+            term.setCursorPos(px+1, 4) write(" O  ")
+            term.setCursorPos(px+1, 5) write("/|\\ ")
+            term.setCursorPos(px+1, 6) write("/ \\ ")
+        end
         
         term.setCursorPos(2, h-1)
         term.setTextColor(colors.red)
         print("[L] LOGOUT")
+        
+        term.setCursorPos(w-10, h)
+        term.setTextColor(colors.gray)
+        write("TAB: Back")
     end
 end
 
@@ -175,23 +239,60 @@ local function inputLoop()
         local event, key = os.pullEvent("key")
         
         if key == keys.tab then
+            -- Смена вкладок
             if activeTab == "TACTICAL" then activeTab = "PROFILE" else activeTab = "TACTICAL" end
+            -- Сброс меню при смене вкладки
+            if activeTab == "TACTICAL" then menuState = "MAIN" end
             drawUI()
+            
         elseif activeTab == "TACTICAL" then
-            if key == keys.one then
-                rednet.send(serverID, {type="REPORT", userID=myProfile.id, text="CONTACT!"}, PROTOCOL)
-                addLog("SENT: CONTACT", colors.white)
-            elseif key == keys.two then
-                rednet.send(serverID, {type="REPORT", userID=myProfile.id, text="AREA CLEAR"}, PROTOCOL)
-                addLog("SENT: CLEAR", colors.white)
-            elseif key == keys.three then
-                rednet.send(serverID, {type="REPORT", userID=myProfile.id, text="MEDIC!"}, PROTOCOL)
-                addLog("SENT: MEDIC", colors.white)
+            if menuState == "MAIN" then
+                if key == keys.one then
+                    menuState = "ALERTS"
+                    drawUI()
+                elseif key == keys.two then
+                    local txt = promptInput("MSG: ")
+                    if txt ~= "" then sendPacket(txt) end
+                    drawUI()
+                end
+                
+            elseif menuState == "ALERTS" then
+                if key == keys.one then
+                    -- 1. REQUEST
+                    local txt = promptInput("REQUEST: ")
+                    if txt ~= "" then sendPacket("REQUESTING: " .. txt) end
+                    menuState = "MAIN"
+                    
+                elseif key == keys.two then
+                    -- 2. INJURY (Без ввода, сразу отправка)
+                    sendPacket("CRITICAL INJURY! MEDIC!", colors.magenta)
+                    menuState = "MAIN"
+                    
+                elseif key == keys.three then
+                    -- 3. CAPTURE
+                    local txt = promptInput("CAPTURING: ")
+                    if txt ~= "" then sendPacket("CAPTURING " .. txt) end
+                    menuState = "MAIN"
+                    
+                elseif key == keys.four then
+                    -- 4. CONTACT
+                    local txt = promptInput("CONTACT: ")
+                    if txt ~= "" then sendPacket("CONTACT: " .. txt) end
+                    menuState = "MAIN"
+                    
+                elseif key == keys.five then
+                    -- 5. BACK
+                    menuState = "MAIN"
+                    drawUI()
+                end
+                drawUI()
             end
-            drawUI()
-        elseif activeTab == "PROFILE" and key == keys.l then
-            fs.delete("session.txt")
-            os.reboot()
+            
+        elseif activeTab == "PROFILE" then
+            if key == keys.l then
+                fs.delete("session.txt")
+                os.reboot()
+            end
         end
     end
 end
@@ -213,6 +314,13 @@ local function netLoop()
                 addLog(msg.text, msg.color)
                 drawUI()
             end
+        end
+        
+        -- Таймер для обновления часов каждую секунду
+        if not msg then
+             local timer = os.startTimer(1)
+             os.pullEvent("timer")
+             drawUI()
         end
     end
 end
