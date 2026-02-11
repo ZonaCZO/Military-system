@@ -16,6 +16,7 @@ if choice == "1" then
     download("server/leader.lua", "commander.lua")
     download("data/burn.lua", "burn.lua")
     download("data/deaddrop.lua", "deaddrop.lua")
+    download("install/pda_patcher.lua", "pda.lua")
     print("Command system installed.")
 elseif choice == "2" then
     download("server/resistance_core.lua", "server.lua")
