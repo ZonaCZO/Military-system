@@ -1,91 +1,126 @@
--- === HUB SERVER V7.0 ===
--- [Universal Network Support]
+-- === CENTRAL DB V10.1 ===
+-- [CRASH FIX + DUPLICATE FIX]
 
 local modem = peripheral.find("modem")
 if not modem then error("No modem found") end
 rednet.open(peripheral.getName(modem))
 
--- === НАСТРОЙКА СЕТИ (НОВОЕ) ===
-local PROTOCOL = "first_net" -- Значение по умолчанию
-local netFile = "net_config.txt"
-
-if fs.exists(netFile) then
-    local f = fs.open(netFile, "r")
+local PROTOCOL = "nipaya_net"
+if fs.exists("net_config.txt") then
+    local f = fs.open("net_config.txt", "r")
     PROTOCOL = f.readAll()
     f.close()
-else
-    term.clear()
-    term.setCursorPos(1,1)
-    print("--- SERVER SETUP ---")
-    print("Enter Unique Network ID")
-    print("(e.g. BLUE_TEAM, SQUAD_1):")
-    write("> ")
-    local input = read()
-    if input ~= "" then PROTOCOL = input end
-    
-    local f = fs.open(netFile, "w")
-    f.write(PROTOCOL)
-    f.close()
 end
+rednet.host(PROTOCOL, "central_core")
 
-rednet.host(PROTOCOL, "central_core") -- Хостим в выбранной сети
-
--- === БАЗА ДАННЫХ ===
+-- === ДАННЫЕ ===
+local users = {} 
 local squads = {}
-local dbFile = "squads.db"
-local commanders = {} 
+local dbFile = "users.db"
+local sqFile = "squads.db"
+local commandersOnline = {} -- Таблица для онлайн командиров
 
-if fs.exists(dbFile) then
-    local f = fs.open(dbFile, "r")
-    squads = textutils.unserialize(f.readAll())
-    f.close()
-else
-    squads["ALPHA"] = "1234"
-    squads["BRAVO"] = "1234"
-    squads["HQ"] = "0000"
+local function loadDB()
+    if fs.exists(dbFile) then
+        local f = fs.open(dbFile, "r")
+        users = textutils.unserialize(f.readAll())
+        f.close()
+    end
+    if fs.exists(sqFile) then
+        local f = fs.open(sqFile, "r")
+        squads = textutils.unserialize(f.readAll())
+        f.close()
+    else
+        squads["ALPHA"] = true
+        squads["HQ"] = true
+    end
 end
 
 local function saveDB()
     local f = fs.open(dbFile, "w")
-    f.write(textutils.serialize(squads))
+    f.write(textutils.serialize(users))
     f.close()
+    local f2 = fs.open(sqFile, "w")
+    f2.write(textutils.serialize(squads))
+    f2.close()
 end
 
-local currentObjective = "STAND BY."
+loadDB()
+local currentObjective = "HOLD POSITION"
 
 -- === КОНСОЛЬ АДМИНА ===
 local function adminLoop()
     while true do
         term.clear()
-        term.setCursorPos(1, 1)
+        term.setCursorPos(1,1)
         term.setTextColor(colors.green)
-        print("/// HUB V7.0 (" .. PROTOCOL .. ") ///")
-        print("Cmds: add <sq> <pass> | del <sq> | list")
+        print("/// SERVER V10.1 ["..PROTOCOL.."] ///")
+        print("----------------------------------")
+        print("mksq <name>       - Register Squad")
+        print("rmsq <name>       - Delete Squad")
+        print("add               - Add Soldier/Cmd")
+        print("del <ID>          - Delete User")
+        print("list              - Show Database")
         
         term.setCursorPos(1, 10)
-        write("HOST> ")
+        write("ADM> ")
         local input = read()
-        
         local args = {}
-        for word in input:gmatch("%S+") do table.insert(args, word) end
+        for w in input:gmatch("%S+") do table.insert(args, w) end
         local cmd = args[1]
         
-        if cmd == "add" and args[2] and args[3] then
-            squads[string.upper(args[2])] = args[3]
+        if cmd == "mksq" and args[2] then
+            squads[string.upper(args[2])] = true
             saveDB()
-            print("Saved.")
+            print("Squad Registered.")
             sleep(1)
-        elseif cmd == "del" and args[2] then
+            
+        elseif cmd == "rmsq" and args[2] then
             squads[string.upper(args[2])] = nil
+            saveDB()
+            print("Squad Removed.")
+            sleep(1)
+            
+        elseif cmd == "add" then
+            write("ID (e.g. K7): ") local id = string.upper(read())
+            write("Pass: ") local pass = read()
+            
+            print("--- SQUADS ---")
+            for sq, _ in pairs(squads) do write(sq.." ") end
+            print("\n--------------")
+            write("Squad: ") local sq = string.upper(read())
+            if not squads[sq] then
+                print("ERROR: Squad not registered! Use 'mksq' first.")
+                sleep(2)
+            else
+                write("Rank (Sgt): ") local rk = read()
+                write("Name (Doe): ") local nm = read()
+                write("Nation (NPY): ") local nat = read()
+                
+                print("Role: 1.SOLDIER  2.COMMANDER")
+                write("> ")
+                local rInput = read()
+                local rl = (rInput == "2") and "COMMANDER" or "SOLDIER"
+                
+                users[id] = {pass=pass, squad=sq, rank=rk, name=nm, nation=nat, role=rl}
+                saveDB()
+                print("User saved as " .. rl)
+                sleep(1)
+            end
+            
+        elseif cmd == "del" and args[2] then
+            users[string.upper(args[2])] = nil
             saveDB()
             print("Deleted.")
             sleep(1)
+            
         elseif cmd == "list" then
-            print("\n--- SQUADS ---")
-            for k,v in pairs(squads) do print(k..": "..v) end
-            print("--- COMMANDERS ---")
-            for _,v in pairs(commanders) do write(v.." ") end
-            print("\nPress Enter...")
+            print("\nID | SQD | ROLE | NAME")
+            for id, u in pairs(users) do
+                local rShort = (u.role=="COMMANDER") and "CMD" or "SLD"
+                print(id .. " | " .. u.squad .. " | " .. rShort .. " | " .. u.name)
+            end
+            print("Press Enter...")
             read()
         end
     end
@@ -94,54 +129,83 @@ end
 -- === СЕТЬ ===
 local function netLoop()
     while true do
-        -- Слушаем только нашу сеть (PROTOCOL)
         local id, msg = rednet.receive(PROTOCOL)
         
         if msg and type(msg) == "table" then
+            
+            -- 1. АВТОРИЗАЦИЯ
             if msg.type == "LOGIN" then
-                local sName = string.upper(msg.squad or "")
+                local userID = string.upper(msg.userID or "")
+                local userPass = msg.userPass
+                -- Если роль не указана, считаем что это SOLDIER (для совместимости)
+                local reqRole = msg.role or "SOLDIER"
                 
-                if squads[sName] and squads[sName] == msg.pass then
-                    rednet.send(id, {type="AUTH", res=true, obj=currentObjective}, PROTOCOL)
-                    print("[LOG] Login: " .. sName .. " (" .. id .. ")")
-                    
-                    if msg.role == "COMMANDER" then 
-                        local exists = false
-                        for _, cid in pairs(commanders) do
-                            if cid == id then exists = true break end
+                local u = users[userID]
+                
+                if u and u.pass == userPass then
+                    if u.role == reqRole then
+                        print("[LOG] Auth OK: " .. userID .. " as " .. reqRole)
+                        rednet.send(id, {
+                            type="AUTH_OK",
+                            profile={
+                                id=userID,
+                                squad=u.squad,
+                                rank=u.rank,
+                                name=u.name,
+                                nation=u.nation,
+                                role=u.role
+                            },
+                            obj=currentObjective
+                        }, PROTOCOL)
+                        
+                        -- Обновляем ID командира (перезаписываем старый, чтобы не было дублей)
+                        if u.role == "COMMANDER" then
+                            commandersOnline[userID] = id
                         end
-                        if not exists then table.insert(commanders, id) end
+                    else
+                        -- !FIX: Добавлена проверка на nil в принте, чтобы сервер не падал
+                        print("[WARN] Role Mismatch: " .. userID .. " tried " .. (reqRole or "NIL"))
+                        rednet.send(id, {type="AUTH_FAIL", reason="Restricted Device"}, PROTOCOL)
                     end
                 else
-                    rednet.send(id, {type="AUTH", res=false, reason="Wrong Pass"}, PROTOCOL)
+                    rednet.send(id, {type="AUTH_FAIL", reason="Invalid ID/Pass"}, PROTOCOL)
                 end
 
-            elseif msg.type == "SET_OBJ" and msg.key == "Freedom" then
-                currentObjective = msg.text
-                rednet.broadcast({type="CHAT_LINE", text="NEW ORDERS: " .. currentObjective, color=colors.yellow, channel="GLOBAL"}, PROTOCOL)
-
+            -- 2. ОТЧЕТЫ
             elseif msg.type == "REPORT" then
-                local prefix = (msg.rank or "") .. " " .. (msg.callsign or "?") .. ": "
-                local color = colors.green
-                if msg.text:find("CONTACT") then color = colors.red
-                elseif msg.text:find("MEDIC") then color = colors.magenta 
-                elseif msg.text:find("MSG") then color = colors.gray end
-                
-                rednet.broadcast({type="CHAT_LINE", text=prefix .. msg.text, color=color, channel="SQUAD", targetSquad=string.upper(msg.squad)}, PROTOCOL)
-
-            elseif msg.type == "SQUAD_CMD" then
-                local prefix = "[CMD] " .. (msg.callsign or "HQ") .. ": "
-                rednet.broadcast({type="CHAT_LINE", text=prefix .. msg.text, color=colors.orange, channel="SQUAD", targetSquad=string.upper(msg.squad)}, PROTOCOL)
-
-            elseif msg.type == "BROADCAST" then
-                 local prefix = "[ALL] " .. (msg.callsign or "HQ") .. ": "
-                 rednet.broadcast({type="CHAT_LINE", text=prefix .. msg.text, color=colors.white, channel="GLOBAL"}, PROTOCOL)
-
+                local u = users[msg.userID]
+                if u then
+                    local color = colors.green
+                    if msg.text:find("CONTACT") then color = colors.red
+                    elseif msg.text:find("MEDIC") then color = colors.magenta end
+                    
+                    local txt = u.rank.." "..u.name.." ("..msg.userID.."): "..msg.text
+                    
+                    rednet.broadcast({
+                        type="CHAT_LINE", 
+                        text=txt, 
+                        color=color, 
+                        channel="SQUAD", 
+                        targetSquad=u.squad
+                    }, PROTOCOL)
+                end
+            
+            -- 3. КОМАНДНЫЙ ЧАТ
             elseif msg.type == "CMD_CHAT" then
-                local txt = "[SECURE] " .. (msg.callsign or "HQ") .. ": " .. msg.text
-                for _, cmdID in pairs(commanders) do
+                local txt = "[SECURE] "..msg.callsign..": "..msg.text
+                -- Отправляем строго по списку уникальных ID
+                for _, cmdID in pairs(commandersOnline) do
                     rednet.send(cmdID, {type="CHAT_LINE", text=txt, color=colors.cyan, channel="CMD"}, PROTOCOL)
                 end
+                
+            -- 4. ПРИКАЗЫ
+            elseif msg.type == "SET_OBJ" then
+                 currentObjective = msg.text
+                 rednet.broadcast({type="CHAT_LINE", text="NEW ORDERS: "..currentObjective, color=colors.yellow, channel="GLOBAL"}, PROTOCOL)
+            
+            elseif msg.type == "SQUAD_CMD" then
+                 local txt = "[CMD] "..msg.callsign..": "..msg.text
+                 rednet.broadcast({type="CHAT_LINE", text=txt, color=colors.orange, channel="SQUAD", targetSquad=msg.squad}, PROTOCOL)
             end
         end
     end
