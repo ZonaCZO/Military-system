@@ -43,4 +43,4 @@ Specific patches designed to transform a standard Pocket Computer (PDA) into a m
 
 ---
 
-**Would you like me to help you write the actual Lua code for the "Wipe Utility" or the "File Encryptor" to get you started?**
+**PS:** if you see some russian words in code, i know about this, but i am lazy ass and i translate in other lang later.
