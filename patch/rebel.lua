@@ -1,11 +1,11 @@
--- === FIELD TERMINAL V7.0 ===
--- [Universal Network Support]
+-- === TACTICAL PDA V8.0 ===
+-- [GUI UPGRADE: Buttons & Status Bars]
 
 local modem = peripheral.find("modem")
 if not modem then error("No Wireless Modem!") end
 rednet.open(peripheral.getName(modem))
 
--- === НАСТРОЙКА СЕТИ ===
+-- === СЕТЕВЫЕ НАСТРОЙКИ ===
 local PROTOCOL = "nipaya_net"
 local netFile = "net_config.txt"
 
@@ -17,8 +17,7 @@ else
     term.clear()
     term.setCursorPos(1,1)
     print("--- NETWORK SETUP ---")
-    print("Enter Network ID (Must match Server):")
-    write("> ")
+    write("Net ID: ")
     local input = read()
     if input ~= "" then PROTOCOL = input end
     local f = fs.open(netFile, "w")
@@ -26,6 +25,7 @@ else
     f.close()
 end
 
+-- === ПРОФИЛЬ ===
 local serverID = rednet.lookup(PROTOCOL, "central_core")
 local profile = {}
 local mySquad = ""
@@ -37,18 +37,18 @@ local function setupProfile()
         file.close()
     else
         term.clear()
-        term.setCursorPos(1,1)
-        print("--- IDENTITY SETUP ---")
-        write("Rank (e.g. Sgt): ") profile.rank = read()
-        write("Name (e.g. Doe): ") profile.name = read()
-        write("Nation (e.g. NPY): ") profile.nation = read()
-        write("Callsign (2 char): ") profile.callsign = string.upper(string.sub(read(), 1, 2))
+        print("--- ID SETUP ---")
+        write("Rank: ") profile.rank = read()
+        write("Name: ") profile.name = read()
+        write("Callsign: ") profile.callsign = string.upper(string.sub(read(), 1, 2))
+        profile.nation = "NPY"
         local file = fs.open("profile.txt", "w")
         file.write(textutils.serialize(profile))
         file.close()
     end
 end
 
+-- === ЛОГИН ===
 local function login()
     setupProfile()
     if not serverID then 
@@ -61,27 +61,31 @@ local function login()
         term.setBackgroundColor(colors.black)
         term.clear()
         term.setCursorPos(1,1)
-        print("--- SQUAD LOGIN ["..PROTOCOL.."] ---")
-        print("User: " .. profile.rank .. " " .. profile.callsign)
+        term.setTextColor(colors.blue)
+        print("=== NIPAYA OS v8.0 ===")
+        term.setTextColor(colors.white)
+        print("User: " .. profile.callsign)
+        
         if msgError ~= "" then
             term.setTextColor(colors.red)
             print(msgError)
             term.setTextColor(colors.white)
         end
         
-        write("Squad (ALPHA): ")
+        write("Squad: ")
         local sName = string.upper(read())
-        write("Password: ")
+        write("Pass: ")
         local sPass = read("*")
         
-        print("Connecting...")
+        term.setTextColor(colors.yellow)
+        print("\nConnecting...")
         rednet.send(serverID, {type="LOGIN", squad=sName, pass=sPass, role="SOLDIER"}, PROTOCOL)
         local id, response = rednet.receive(PROTOCOL, 3)
         if response and response.type == "AUTH" and response.res then
             mySquad = sName
             return response.obj
         else
-            msgError = "Access Denied"
+            msgError = "ACCESS DENIED"
         end
     end
 end
@@ -90,60 +94,109 @@ local currentObj = login()
 local logHistory = {} 
 
 local function addLog(text, color)
-    table.insert(logHistory, {text = text, color = color or colors.green})
-    if #logHistory > 6 then table.remove(logHistory, 1) end
+    local time = textutils.formatTime(os.time(), true)
+    table.insert(logHistory, {text = text, color = color or colors.green, time = time})
+    if #logHistory > 8 then table.remove(logHistory, 1) end
 end
 
+-- === ОТРИСОВКА ИНТЕРФЕЙСА ===
 local function drawUI()
-    term.setBackgroundColor(colors.black)
-    term.clear()
     local w, h = term.getSize()
     
-    term.setCursorPos(1,1)
-    term.setBackgroundColor(colors.gray)
+    -- 1. ВЕРХНИЙ БАР (Синий)
+    paintutils.drawFilledBox(1, 1, w, 1, colors.blue)
     term.setTextColor(colors.white)
-    term.clearLine()
-    print(profile.rank .. " " .. profile.name .. " \"" .. profile.callsign .. "\"")
+    term.setBackgroundColor(colors.blue)
+    term.setCursorPos(1,1)
+    write(mySquad .. "-" .. profile.callsign)
     
-    term.setCursorPos(1,2)
-    term.clearLine()
-    local time = textutils.formatTime(os.time(), true)
-    print(profile.nation .. " | SQD: " .. mySquad .. " | " .. time)
-    
-    term.setBackgroundColor(colors.black)
-    term.setCursorPos(1, 4)
+    -- Правая часть бара (Время и "Сигнал")
+    local status = "ON " .. textutils.formatTime(os.time(), true)
+    term.setCursorPos(w - #status + 1, 1)
+    write(status)
+
+    -- 2. ПАНЕЛЬ ЗАДАЧИ (Серый)
+    paintutils.drawFilledBox(1, 2, w, 3, colors.gray)
+    term.setCursorPos(1, 2)
+    term.setTextColor(colors.lightGray)
+    write(" CURRENT OBJECTIVE:")
+    term.setCursorPos(1, 3)
     term.setTextColor(colors.yellow)
-    print("OBJ: " .. currentObj)
+    write(" > " .. string.sub(currentObj, 1, w-3))
+
+    -- 3. ОСНОВНОЙ ЭКРАН (Черный)
+    paintutils.drawFilledBox(1, 4, w, h-4, colors.black)
     
-    term.setCursorPos(1, 6)
-    term.setTextColor(colors.gray)
-    print("--- SQUAD FEED ---")
-    local y = 7
+    -- Отрисовка логов
+    local y = 4
     for _, item in ipairs(logHistory) do
-        term.setCursorPos(1, y)
-        term.setTextColor(item.color)
-        print(item.text)
-        y = y + 1
+        if y < h-3 then -- Оставляем место под кнопки
+            term.setCursorPos(1, y)
+            term.setBackgroundColor(colors.black)
+            term.setTextColor(colors.gray)
+            write(item.time .. " ")
+            term.setTextColor(item.color)
+            write(item.text)
+            y = y + 1
+        end
     end
 
-    term.setCursorPos(1, h-3)
-    term.setTextColor(colors.gray)
-    print("----------------------------")
+    -- 4. НИЖНЯЯ ПАНЕЛЬ КНОПОК
+    -- Рисуем цветные "кнопки" внизу экрана
+    local btnY = h - 2
+    local btnH = h
+    
+    -- Кнопка 1: CONTACT (Красная)
+    paintutils.drawFilledBox(1, btnY, 7, btnH, colors.red)
+    term.setCursorPos(2, btnY)
     term.setTextColor(colors.white)
-    print("1. CONTACT  2. CLEAR  3. MEDIC")
-    print("4. SUPPLY   M. MSG    R. UPDATE")
+    term.setBackgroundColor(colors.red)
+    write("1.CNT")
+    
+    -- Кнопка 2: CLEAR (Зеленая)
+    paintutils.drawFilledBox(9, btnY, 15, btnH, colors.green)
+    term.setCursorPos(10, btnY)
+    term.setBackgroundColor(colors.green)
+    write("2.CLR")
+    
+    -- Кнопка 3: MEDIC (Розовая)
+    paintutils.drawFilledBox(17, btnY, 23, btnH, colors.magenta)
+    term.setCursorPos(18, btnY)
+    term.setBackgroundColor(colors.magenta)
+    write("3.MED")
+
+    -- Кнопка 4: AMMO (Голубая) или MSG
+    if w > 24 then
+        paintutils.drawFilledBox(25, btnY, 31, btnH, colors.lightBlue)
+        term.setCursorPos(26, btnY)
+        term.setBackgroundColor(colors.lightBlue)
+        write("4.AMO")
+    end
+    
+    -- Подсказка про чат
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.gray)
+    term.setCursorPos(1, h-3)
+    write("[M]essage  [R]efresh")
 end
 
-local function sendPacket(text)
+local function sendPacket(text, visualColor)
     rednet.send(serverID, {type = "REPORT", squad = mySquad, callsign = profile.callsign, rank = profile.rank, text = text}, PROTOCOL)
-    addLog("SENT: " .. text, colors.gray)
+    addLog("ME: " .. text, colors.white)
+    drawUI()
+    
+    -- Визуальный "блик" отправки
+    local w,h = term.getSize()
+    paintutils.drawFilledBox(1, h-3, w, h-3, visualColor or colors.gray)
+    sleep(0.1)
     drawUI()
 end
 
 local function promptInput(promptText)
     local w, h = term.getSize()
-    term.setCursorPos(1, h)
-    term.clearLine()
+    -- Рисуем поле ввода поверх кнопок
+    paintutils.drawFilledBox(1, h-2, w, h, colors.black)
+    term.setCursorPos(1, h-1)
     term.setTextColor(colors.yellow)
     write(promptText)
     term.setTextColor(colors.white)
@@ -154,13 +207,14 @@ local function mainLoop()
     while true do
         drawUI()
         local event, key = os.pullEvent("char")
-        if key == "1" then sendPacket("CONTACT: " .. promptInput("Loc: "))
-        elseif key == "2" then sendPacket("ZONE SECURED")
-        elseif key == "3" then sendPacket("MEDIC NEEDED")
-        elseif key == "4" then sendPacket("SUPPLY: " .. promptInput("Item: "))
-        elseif key == "m" then 
-            local msg = promptInput("Msg: ")
-            if msg ~= "" then sendPacket("MSG: " .. msg) end
+        
+        if key == "1" then sendPacket("CONTACT!", colors.red)
+        elseif key == "2" then sendPacket("AREA CLEAR", colors.green)
+        elseif key == "3" then sendPacket("MEDIC NEEDED!", colors.magenta)
+        elseif key == "4" then sendPacket("NEED AMMO", colors.lightBlue)
+        elseif key == "m" or key == "M" then 
+            local msg = promptInput("MSG: ")
+            if msg ~= "" then sendPacket(msg, colors.gray) end
         end
     end
 end
