@@ -1,4 +1,4 @@
--- === NIPAYA DISK BURNER v2.0 ===
+-- === DISK BURNER v2.0 ===
 -- Создание установочных дискет
 
 local function clearScreen()
@@ -13,7 +13,7 @@ local function drawHeader()
     term.setBackgroundColor(colors.gray)
     term.setTextColor(colors.white)
     term.clearLine()
-    print(" NIPAYA DISK FACTORY ")
+    print(" DISK FACTORY ")
     term.setBackgroundColor(colors.black)
 end
 

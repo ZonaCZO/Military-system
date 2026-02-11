@@ -1,4 +1,4 @@
--- === NIPAYA DEAD DROP V2.0 ===
+-- === DEAD DROP V2.0 ===
 -- [ENCRYPTED STORAGE]
 
 -- === 1. CRYPTO ENGINE (XOR) ===
