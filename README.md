@@ -7,16 +7,12 @@ A specialized collection of ComputerCraft programs for secure file management, n
 
 ---
 
-## 📁 Data | File Management & Security
+## 📁 CMD | Commander System
 
 These programs are designed for handling sensitive information, encryption, and physical media operations.
 
-* **File Encryptor:** Secure your data with custom passkeys.
-`shell.run("pastebin get [CODE] encrypt")` — [подозрительная ссылка удалена]
-* **Disk Burner:** Fast-write utility for moving data to floppy disks.
-`shell.run("pastebin get [CODE] burn")` — [подозрительная ссылка удалена]
-* **Wipe Utility:** Military-grade file deletion (prevents recovery).
-`shell.run("pastebin get [CODE] wipe")` — [подозрительная ссылка удалена]
+* **Installer:** Secure your data with custom passkeys.
+`pastebin run n8duYh1C` — [[pastebin link](https://pastebin.com/n8duYh1C)]
 
 ---
 
