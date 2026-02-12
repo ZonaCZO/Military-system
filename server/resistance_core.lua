@@ -1,4 +1,4 @@
--- === CENTRAL DB V12.0 (RC4) ===
+-- === CENTRAL DB V12.1 (RC4+GEN) ===
 -- [ENCRYPTION: RC4 STREAM CIPHER]
 
 local modem = peripheral.find("modem")
@@ -79,6 +79,7 @@ local squads = {}
 local dbFile = "users.db"
 local sqFile = "squads.db"
 local commandersOnline = {} 
+local generalsOnline = {} -- [NEW] Список генералов
 
 local function loadDB()
     if fs.exists(dbFile) then
@@ -114,12 +115,12 @@ local function adminLoop()
         term.clear()
         term.setCursorPos(1,1)
         term.setTextColor(colors.green)
-        print("/// SERVER V12.0 ["..PROTOCOL.."] ///")
+        print("/// SERVER V12.1 ["..PROTOCOL.."] ///")
         print("KEY: " .. (KEY=="none" and "OFF" or "RC4 ACTIVE"))
         print("----------------------------------")
         print("mksq <name>       - Register Squad")
         print("rmsq <name>       - Delete Squad")
-        print("add               - Add Soldier/Cmd")
+        print("add               - Add User")
         print("del <ID>          - Delete User")
         print("list              - Show Database")
         
@@ -154,12 +155,17 @@ local function adminLoop()
                 write("Rank: ") local rk = read()
                 write("Name: ") local nm = read()
                 write("Nation: ") local nat = read()
-                print("Role: 1.SOLDIER 2.COMMANDER")
+                -- [MODIFIED] Добавлена роль GENERAL
+                print("Role: 1.SOLDIER 2.COMMANDER 3.GENERAL")
                 write("> ")
-                local rl = (read() == "2") and "COMMANDER" or "SOLDIER"
+                local rInput = read()
+                local rl = "SOLDIER"
+                if rInput == "2" then rl = "COMMANDER"
+                elseif rInput == "3" then rl = "GENERAL" end
+                
                 users[id] = {pass=pass, squad=sq, rank=rk, name=nm, nation=nat, role=rl}
                 saveDB()
-                print("User Saved.")
+                print("User Saved as " .. rl)
                 sleep(1)
             end
         elseif cmd == "del" and args[2] then
@@ -193,10 +199,15 @@ local function netLoop()
                 local u = users[userID]
                 
                 if u and u.pass == userPass then
-                    if u.role == reqRole then
-                        print("[LOG] Auth: " .. userID)
+                    -- [MODIFIED] Проверка доступа для GENERAL
+                    local accessGranted = false
+                    if u.role == reqRole then accessGranted = true end
+                    -- Генерал может заходить через терминал генерала
+                    if u.role == "GENERAL" and reqRole == "GENERAL" then accessGranted = true end
+
+                    if accessGranted then
+                        print("[LOG] Auth: " .. userID .. " ("..u.role..")")
                         
-                        -- Шифруем задачу перед отправкой
                         local encObj = crypt(currentObjective, KEY)
                         
                         rednet.send(id, {
@@ -208,7 +219,12 @@ local function netLoop()
                             obj=encObj
                         }, PROTOCOL)
                         
+                        -- [MODIFIED] Добавляем в списки рассылки
                         if u.role == "COMMANDER" then commandersOnline[userID] = id end
+                        if u.role == "GENERAL" then 
+                            generalsOnline[userID] = id 
+                            commandersOnline[userID] = id -- Генералы тоже слышат CMD чат
+                        end
                     else
                         print("[WARN] Role Mismatch: " .. userID)
                         rednet.send(id, {type="AUTH_FAIL", reason="Restricted Device"}, PROTOCOL)
@@ -221,7 +237,6 @@ local function netLoop()
             elseif msg.type == "REPORT" then
                 local u = users[msg.userID]
                 if u then
-                    -- 1. Дешифруем входящее
                     local cleanText = crypt(msg.text, KEY) 
                     
                     local color = colors.green
@@ -229,8 +244,6 @@ local function netLoop()
                     elseif cleanText:find("MEDIC") then color = colors.magenta end
                     
                     local finalTxt = u.rank.." "..u.name.." ("..msg.userID.."): "..cleanText
-                    
-                    -- 2. Шифруем исходящее
                     local encTxt = crypt(finalTxt, KEY)
                     
                     rednet.broadcast({
@@ -242,12 +255,13 @@ local function netLoop()
                     }, PROTOCOL)
                 end
             
-            -- CMD CHAT
+            -- CMD CHAT (Командиры и Генералы)
             elseif msg.type == "CMD_CHAT" then
                 local cleanText = crypt(msg.text, KEY)
                 local finalTxt = "[SECURE] "..msg.callsign..": "..cleanText
                 local encTxt = crypt(finalTxt, KEY)
                 
+                -- Отправляем всем в списке командиров (куда включены и генералы)
                 for _, cmdID in pairs(commandersOnline) do
                     rednet.send(cmdID, {type="CHAT_LINE", text=encTxt, color=colors.cyan, channel="CMD"}, PROTOCOL)
                 end
@@ -268,6 +282,24 @@ local function netLoop()
                  local encTxt = crypt(finalTxt, KEY)
                  
                  rednet.broadcast({type="CHAT_LINE", text=encTxt, color=colors.orange, channel="SQUAD", targetSquad=msg.squad}, PROTOCOL)
+
+            -- [NEW] GLOBAL ALERT (Только для генералов)
+            elseif msg.type == "GLOBAL_ALERT" then
+                local u = users[msg.callsign]
+                if u and u.role == "GENERAL" then
+                    local cleanText = crypt(msg.text, KEY)
+                    local finalTxt = "!!! GENERAL ALERT !!!\n"..cleanText
+                    local encTxt = crypt(finalTxt, KEY)
+                    
+                    -- Отправляем всем абсолютно с красным цветом
+                    rednet.broadcast({
+                        type="CHAT_LINE", 
+                        text=encTxt, 
+                        color=colors.red, 
+                        channel="GLOBAL", 
+                        alert=true
+                    }, PROTOCOL)
+                end
             end
         end
     end
