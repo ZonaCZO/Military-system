@@ -37,7 +37,7 @@ if choice == "1" then
 
     -- Загружаем саму систему
     print("\nInstalling System...")
-    download("server/menu.lua", "system.lua")
+    download("server/system.lua", "system.lua")
     
     print("Command system installed.")
     
