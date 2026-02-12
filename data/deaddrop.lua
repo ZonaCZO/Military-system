@@ -1,7 +1,7 @@
--- === DEAD DROP V2.0 ===
+-- === DEAD DROP V2.1 (RC4) ===
 -- [ENCRYPTED STORAGE]
 
--- === 1. CRYPTO ENGINE (XOR) ===
+-- === 1. CRYPTO ENGINE (RC4) ===
 local function toHex(str)
     return (str:gsub('.', function (c)
         return string.format('%02X', string.byte(c))
@@ -14,17 +14,35 @@ local function fromHex(str)
     end))
 end
 
-local function xor_cipher(text, key)
-    local output = {}
-    for i = 1, #text do
-        local textByte = string.byte(text, i)
-        local keyPos = (i - 1) % #key + 1
-        local keyByte = string.byte(key, keyPos)
-        
-        -- Битовая магия
-        local resultByte = bit.bxor(textByte, keyByte)
-        table.insert(output, string.char(resultByte))
+-- Алгоритм RC4 (потоковый шифр)
+local function rc4(text, key)
+    if not key or key == "" then return text end
+    
+    -- 1. Инициализация (Key-Scheduling Algorithm)
+    local S = {}
+    for i = 0, 255 do S[i] = i end
+    
+    local j = 0
+    for i = 0, 255 do
+        j = (j + S[i] + string.byte(key, (i % #key) + 1)) % 256
+        S[i], S[j] = S[j], S[i]
     end
+    
+    -- 2. Генерация потока (PRGA)
+    local i = 0
+    j = 0
+    local output = {}
+    
+    for k = 1, #text do
+        i = (i + 1) % 256
+        j = (j + S[i]) % 256
+        S[i], S[j] = S[j], S[i]
+        
+        local K = S[(S[i] + S[j]) % 256]
+        -- XOR байта текста с сгенерированным байтом ключа
+        table.insert(output, string.char(bit.bxor(string.byte(text, k), K)))
+    end
+    
     return table.concat(output)
 end
 
@@ -35,7 +53,7 @@ while true do
     term.setBackgroundColor(colors.black)
     term.clear()
     term.setCursorPos(1,1)
-    print("--- DEAD DROP TERMINAL ---")
+    print("--- DEAD DROP TERMINAL (RC4) ---")
     print("Waiting for Disk...")
 
     -- Ждем вставки диска
@@ -70,10 +88,10 @@ while true do
                 f.close()
                 
                 -- Пытаемся расшифровать
-                -- pcall нужен, чтобы программа не вылетела, если на диске мусор
+                -- RC4 симметричен: для расшифровки прогоняем зашифрованное через ту же функцию
                 local status, result = pcall(function()
-                    local decoded = fromHex(content)
-                    return xor_cipher(decoded, key)
+                    local decoded = fromHex(content) -- Сначала из HEX в байты
+                    return rc4(decoded, key)         -- Потом RC4
                 end)
                 
                 print("\n--- CONTENT START ---")
@@ -105,8 +123,8 @@ while true do
             sleep(1)
         else
             print("Encrypting...")
-            local encrypted = xor_cipher(msg, key)
-            local hexData = toHex(encrypted)
+            local encrypted = rc4(msg, key) -- Шифруем RC4
+            local hexData = toHex(encrypted) -- Переводим в HEX для сохранения
             
             local f = fs.open(diskPath, "w")
             f.write(hexData)
