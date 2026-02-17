@@ -12,11 +12,17 @@ local function download(url, path)
     shell.run("wget", BASE .. url, path)
 end
 
+local function downloadPB(url, path)
+    print("Downloading "..path.."...")
+    shell.run("pastebin get", BASE .. url, path)
+end
+
 if choice == "1" then
     -- Создаем папки
     if not fs.exists("pr") then fs.makeDir("pr") end
     if not fs.exists("sys") then fs.makeDir("sys") end
     if not fs.exists("sys/icon") then fs.makeDir("sys/icon") end
+    if not fs.exists("startup") then fs.makeDir("startup") end
 
     -- Загрузка программ
     print("\nDownloading Software...")
@@ -34,9 +40,11 @@ if choice == "1" then
     download("system/icons/burn.nfp", "sys/icon/burn.nfp")
     download("system/icons/deaddrop.nfp", "sys/icon/deaddrop.nfp")
     download("system/icons/pda.nfp", "sys/icon/pda.nfp")
+    
 
     -- Загружаем саму систему
     print("\nInstalling System...")
+    downloadPB("SE2bgZCy", "/startup/cyrillic.lua")
     download("system/system.lua", "system.lua")
     
     print("Command system installed.")
