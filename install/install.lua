@@ -14,7 +14,7 @@ end
 
 local function downloadPB(url, path)
     print("Downloading "..path.."...")
-    shell.run("pastebin get", BASE .. url, path)
+    shell.run("pastebin get ", url, path)
 end
 
 if choice == "1" then
