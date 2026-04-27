@@ -81,11 +81,11 @@ elseif choice == "2" then
     download("server/resistance_core.lua", "server.lua")
     
     -- Скачиваем модули строго по путям, которые ожидает require()
-    download("server/auth.lua", "server/modules/auth.lua")
-    download("server/storage.lua", "server/modules/storage.lua")
-    download("server/fronts.lua", "server/modules/fronts.lua")
-    download("server/map.lua", "server/modules/map.lua")
-    download("server/archive.lua", "server/modules/archive.lua")
+    download("server/modules/auth.lua", "server/modules/auth.lua")
+    download("server/modules/storage.lua", "server/modules/storage.lua")
+    download("server/modules/fronts.lua", "server/modules/fronts.lua")
+    download("server/modules/map.lua", "server/modules/map.lua")
+    download("server/modules/archive.lua", "server/modules/archive.lua")
 
     print("\nServer installed.")
 
