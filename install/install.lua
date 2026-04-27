@@ -9,6 +9,9 @@ local choice = read()
 
 -- === SAFE DOWNLOAD ===
 local function download(url, path)
+    -- Удаляем файл, если он уже есть, чтобы wget не завис с вопросом об перезаписи
+    if fs.exists(path) then fs.delete(path) end 
+    
     print("Downloading " .. path .. "...")
     local ok = shell.run("wget", BASE .. url, path)
     if not ok then
@@ -68,9 +71,21 @@ elseif choice == "2" then
     mkdir("data/map")
     mkdir("data/map/fronts")
     mkdir("data/map/sectors")
+    
+    -- СОЗДАЁМ ПАПКИ ДЛЯ МОДУЛЕЙ СЕРВЕРА
+    mkdir("server")
+    mkdir("server/modules")
 
-    print("\nDownloading core...")
+    print("\nDownloading core & modules...")
+    -- Скачиваем ядро в корень
     download("server/resistance_core.lua", "server.lua")
+    
+    -- Скачиваем модули строго по путям, которые ожидает require()
+    download("server/auth.lua", "server/modules/auth.lua")
+    download("server/storage.lua", "server/modules/storage.lua")
+    download("server/fronts.lua", "server/modules/fronts.lua")
+    download("server/map.lua", "server/modules/map.lua")
+    download("server/archive.lua", "server/modules/archive.lua")
 
     print("\nServer installed.")
 
