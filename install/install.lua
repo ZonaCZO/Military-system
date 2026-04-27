@@ -1,4 +1,4 @@
-local BASE = "https://raw.githubusercontent.com/ZonaCZO/Military-system/MSOS-2.0/"
+local BASE = "https://raw.githubusercontent.com/ZonaCZO/Military-system/main/"
 
 print("Military System Installer v2.0")
 print("1 - Command Computer (MSOS)")
