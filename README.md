@@ -9,7 +9,7 @@ A specialized collection of ComputerCraft programs for secure file management, n
 You need to choose between commander system and server.
 
 * **Installer:**.
-`wget run https://raw.githubusercontent.com/ZonaCZO/Military-system/MSOS-2.0/install/install.lua`
+`wget run https://raw.githubusercontent.com/ZonaCZO/Military-system/main/install/install.lua`
 
 
 ### 🛠 Installation Instructions
