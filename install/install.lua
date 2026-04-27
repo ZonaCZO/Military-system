@@ -84,6 +84,10 @@ elseif choice == "2" then
 
     print("\nDownloading Server Core...")
     download("server/resistance_core.lua", "server.lua")
+
+    print("\nInstalling Keyboard Driver...")
+    mkdir("startup")
+    download("system/cyrillic.lua", "startup/cyrillic.lua")
     
     print("Downloading Core Modules...")
     download("server/modules/auth.lua", "server/modules/auth.lua")
@@ -112,4 +116,4 @@ print("\n=== INSTALL COMPLETE ===")
 term.setTextColor(colors.yellow)
 print("Press Enter to reboot device...")
 read()
-os.reboot()
+os.reboot() 
