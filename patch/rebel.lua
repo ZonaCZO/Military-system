@@ -1,4 +1,4 @@
--- === PDA V12.1 (SECURE STORAGE) ===
+-- === PDA V14.2 (SECURE STORAGE + TOKENS) ===
 -- [RC4 ENCRYPTED SESSION FILE]
 
 local modem = peripheral.find("modem")
@@ -36,94 +36,95 @@ if fs.exists(netFile) then
     f.close()
     if not KEY then KEY = "none" end
 else
-    term.clear()
-    term.setCursorPos(1,1)
+    term.clear(); term.setCursorPos(1,1)
     print("--- DEVICE SETUP ---")
-    write("Network ID: ")
-    local inp = read()
+    write("Network ID: "); local inp = read()
     if inp ~= "" then PROTOCOL = inp end
-    
-    write("Encryption Key: ")
-    local kInp = read()
+    write("Encryption Key: "); local kInp = read()
     if kInp ~= "" then KEY = kInp end
-    
-    local f = fs.open(netFile, "w")
-    f.writeLine(PROTOCOL)
-    f.writeLine(KEY)
-    f.close()
+    local f = fs.open(netFile, "w"); f.writeLine(PROTOCOL); f.writeLine(KEY); f.close()
     sleep(1)
 end
 
 local serverID = rednet.lookup(PROTOCOL, "central_core")
 local myProfile = nil
-local currentObj = "Connecting..."
+local myToken = nil
+local currentObj = "Awaiting Orders..."
+
+-- === СЕТЕВЫЕ ОБЕРТКИ ===
+local function sendEncrypted(data)
+    local payload = textutils.serialize(data)
+    local encrypted = crypt(payload, KEY)
+    rednet.send(serverID, encrypted, PROTOCOL)
+end
+
+local function receiveEncrypted(timeout)
+    local id, msg = rednet.receive(PROTOCOL, timeout)
+    if type(msg) == "string" then
+        local decrypted = crypt(msg, KEY)
+        return id, textutils.unserialize(decrypted)
+    end
+    return id, nil
+end
 
 local function promptInput(promptText)
     local w, h = term.getSize()
     paintutils.drawFilledBox(1, h-2, w, h, colors.black)
-    term.setCursorPos(1, h-1)
-    term.setTextColor(colors.yellow)
-    write(promptText)
-    term.setTextColor(colors.white)
+    term.setCursorPos(1, h-1); term.setTextColor(colors.yellow)
+    write(promptText); term.setTextColor(colors.white)
     return read()
 end
 
+-- === ЛОГИН ===
 local function login()
-    -- !!! ЧТЕНИЕ ЗАШИФРОВАННОЙ СЕССИИ !!!
+    -- АВТОЛОГИН
     if fs.exists("session.dat") then
         local f = fs.open("session.dat", "r")
         local rawData = f.readAll()
         f.close()
         
-        -- Попытка расшифровать
         local decryptedJson = crypt(rawData, KEY)
         local savedData = textutils.unserialize(decryptedJson)
         
-        if savedData and savedData.id then
-            myProfile = savedData
+        if savedData and savedData.id and savedData.pass then
             if not serverID then serverID = rednet.lookup(PROTOCOL, "central_core") end
             if serverID then 
-                rednet.send(serverID, {type="LOGIN", userID=myProfile.id, userPass=myProfile.pass, role="SOLDIER"}, PROTOCOL)
-                local _, msg = rednet.receive(PROTOCOL, 2)
+                sendEncrypted({type="LOGIN", userID=savedData.id, userPass=savedData.pass, role="soldier"})
+                local _, msg = receiveEncrypted(3)
                 if msg and msg.type=="AUTH_OK" then 
-                    currentObj = crypt(msg.obj, KEY)
+                    myProfile = msg.profile
+                    myToken = msg.token
+                    return
                 end
             end
-            return
-        else
-            -- Если расшифровка не удалась (сменился ключ или файл битый)
-            print("Session corrupted or key changed.")
-            fs.delete("session.dat")
-            sleep(1)
         end
+        -- Если не вышло (сменился ключ, пароль или сервер оффлайн)
+        print("Session expired or Server Offline.")
+        fs.delete("session.dat")
+        sleep(1)
     end
 
+    -- РУЧНОЙ ЛОГИН
     while true do
-        term.setBackgroundColor(colors.black)
-        term.clear()
-        term.setCursorPos(1,1)
+        term.setBackgroundColor(colors.black); term.clear(); term.setCursorPos(1,1)
         print("=== SOLDIER LOGIN ===")
-        write("ID (e.g. J1): ")
-        local inputID = string.upper(read())
-        write("Password: ")
-        local inputPass = read("*")
+        write("ID (e.g. ST): "); local inputID = string.upper(read())
+        write("Password: "); local inputPass = read("*")
         
         if not serverID then serverID = rednet.lookup(PROTOCOL, "central_core") end
         
         if serverID then
-            rednet.send(serverID, {type="LOGIN", userID=inputID, userPass=inputPass, role="SOLDIER"}, PROTOCOL)
-            local _, msg = rednet.receive(PROTOCOL, 3)
+            sendEncrypted({type="LOGIN", userID=inputID, userPass=inputPass, role="soldier"})
+            local _, msg = receiveEncrypted(3)
             
             if msg and msg.type == "AUTH_OK" then
                 myProfile = msg.profile
-                myProfile.pass = inputPass
-                currentObj = crypt(msg.obj, KEY)
+                myToken = msg.token
                 
-                -- !!! СОХРАНЕНИЕ ЗАШИФРОВАННОЙ СЕССИИ !!!
-                local cleanJson = textutils.serialize(myProfile)
+                -- Сохраняем только креды для автологина
+                local cleanJson = textutils.serialize({id=inputID, pass=inputPass})
                 local encryptedData = crypt(cleanJson, KEY)
-                
-                local f = fs.open("session.dat", "w") -- Расширение .dat для красоты
+                local f = fs.open("session.dat", "w")
                 f.write(encryptedData)
                 f.close()
                 return
@@ -152,8 +153,14 @@ local function addLog(text, color)
 end
 
 local function sendPacket(text)
-    local encText = crypt(text, KEY)
-    rednet.send(serverID, {type = "REPORT", userID=myProfile.id, text = encText}, PROTOCOL)
+    -- Отправляем как SQUAD_REPORT с токеном
+    sendEncrypted({
+        type = "SQUAD_REPORT", 
+        userID = myProfile.id, 
+        token = myToken, 
+        squad = myProfile.squad,
+        text = text
+    })
     addLog("ME: " .. text, colors.white)
 end
 
@@ -171,23 +178,19 @@ local function drawUI()
     write(string.rep(" ", w - 18))
     local timeStr = textutils.formatTime(os.time(), true)
     term.setCursorPos(w - #timeStr + 1, 1)
-    term.setTextColor(colors.white)
-    write(timeStr)
+    term.setTextColor(colors.white); write(timeStr)
     
     if activeTab == "TACTICAL" then
         paintutils.drawFilledBox(1, 2, w, h, colors.black)
-        term.setCursorPos(1, 2)
-        term.setTextColor(colors.yellow)
+        term.setCursorPos(1, 2); term.setTextColor(colors.yellow)
         print("OBJ: " .. string.sub(currentObj, 1, w-5))
         
         if menuState == "MAIN" then
             local y = 4
             for _, item in ipairs(logHistory) do
                 if y < h-3 then
-                    term.setCursorPos(1, y)
-                    term.setTextColor(item.color)
-                    print(item.text)
-                    y = y + 1
+                    term.setCursorPos(1, y); term.setTextColor(item.color)
+                    print(item.text); y = y + 1
                 end
             end
             local btnY = h-2
@@ -248,27 +251,27 @@ end
 
 local function netLoop()
     while true do
-        local id, msg = rednet.receive(PROTOCOL)
+        local id, msg = receiveEncrypted(1)
         if msg and msg.type == "CHAT_LINE" then
             local show = false
             if msg.channel == "GLOBAL" then show = true end
             if msg.channel == "SQUAD" and msg.targetSquad == myProfile.squad then show = true end
             
             if show then
-                -- Дешифруем входящее
-                local decryptedText = crypt(msg.text, KEY)
-                
                 if msg.channel == "GLOBAL" and msg.color == colors.yellow then
-                     currentObj = string.gsub(decryptedText, "NEW ORDERS: ", "")
+                     currentObj = string.gsub(msg.text, "NEW ORDERS: ", "")
                      local s = peripheral.find("speaker"); if s then s.playNote("pling", 3, 24) end
                 end
-                addLog(decryptedText, msg.color)
+                -- Добавляем префикс от кого пришло сообщение
+                local prefix = (msg.from == myProfile.id) and "" or (msg.from .. ": ")
+                addLog(prefix .. msg.text, msg.color)
                 drawUI()
             end
+        elseif not msg then
+            drawUI() -- Обновляем часы
         end
-        if not msg then local timer = os.startTimer(1); os.pullEvent("timer"); drawUI() end
     end
 end
 
 drawUI()
-parallel.waitForAny(inputLoop, netLoop) 
+parallel.waitForAny(inputLoop, netLoop)
