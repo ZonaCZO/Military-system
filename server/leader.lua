@@ -1,4 +1,4 @@
--- === COMMANDER TABLET V12.0 (RC4) ===
+-- === COMMANDER TABLET V14.2 (Secure RC4 + Tokens) ===
 -- [ENCRYPTION CLIENT]
 
 local modem = peripheral.find("modem")
@@ -36,73 +36,72 @@ if fs.exists(netFile) then
     f.close()
     if not KEY then KEY = "none" end
 else
-    term.clear()
-    term.setCursorPos(1,1)
+    term.clear(); term.setCursorPos(1,1)
     print("--- SERVER CONNECTING ---")
-    
-    write("Network ID: ")
-    local input = read()
+    write("Network ID: "); local input = read()
     if input ~= "" then PROTOCOL = input end
-    
-    write("Encryption Key: ")
-    local kInp = read()
+    write("Encryption Key: "); local kInp = read()
     if kInp ~= "" then KEY = kInp end
-    
-    local f = fs.open(netFile, "w")
-    f.writeLine(PROTOCOL)
-    f.writeLine(KEY)
-    f.close()
-    print("Config Saved.")
-    sleep(1)
+    local f = fs.open(netFile, "w"); f.writeLine(PROTOCOL); f.writeLine(KEY); f.close()
+    print("Config Saved."); sleep(1)
 end
 
 local serverID = rednet.lookup(PROTOCOL, "central_core")
 local myProfile = nil
+local myToken = nil
 local currentObj = "Wait..."
 
+-- === СЕТЕВЫЕ ОБЕРТКИ ===
+local function sendEncrypted(data)
+    local payload = textutils.serialize(data)
+    local encrypted = crypt(payload, KEY)
+    rednet.send(serverID, encrypted, PROTOCOL)
+end
+
+local function receiveEncrypted(timeout)
+    local id, msg = rednet.receive(PROTOCOL, timeout)
+    if type(msg) == "string" then
+        local decrypted = crypt(msg, KEY)
+        local data = textutils.unserialize(decrypted)
+        return id, data
+    end
+    return id, nil
+end
+
+-- === ЛОГИН ===
 local function login()
     if fs.exists("cmd_id.txt") then fs.delete("cmd_id.txt") end
     
     local msgText = ""
     while true do
-        term.setBackgroundColor(colors.black)
-        term.clear()
-        term.setCursorPos(1,1)
-        term.setTextColor(colors.cyan)
-        print("--- COMMAND LINK V12.0 ---")
-        term.setTextColor(colors.white)
+        term.setBackgroundColor(colors.black); term.clear(); term.setCursorPos(1,1)
+        term.setTextColor(colors.cyan); print("--- COMMAND LINK V14.2 ---"); term.setTextColor(colors.white)
         
-        if msgText ~= "" then 
-            term.setTextColor(colors.red)
-            print(msgText) 
-            term.setTextColor(colors.white)
-        end
+        if msgText ~= "" then term.setTextColor(colors.red); print(msgText); term.setTextColor(colors.white) end
         
-        write("Commander ID (e.g. K7): ")
-        local inputID = string.upper(read())
-        write("Password: ")
-        local inputPass = read("*")
+        write("Commander ID: "); local inputID = string.upper(read())
+        write("Password: "); local inputPass = read("*")
         
         if not serverID then serverID = rednet.lookup(PROTOCOL, "central_core") end
-        if not serverID then serverID = os.getComputerID() end 
         
-        rednet.send(serverID, {
+        -- Используем sendEncrypted вместо обычного rednet.send
+        sendEncrypted({
             type="LOGIN", 
             userID=inputID, 
             userPass=inputPass, 
             role="COMMANDER"
-        }, PROTOCOL)
+        })
         
-        local id, msg = rednet.receive(PROTOCOL, 3)
+        local id, msg = receiveEncrypted(3)
         
         if msg and msg.type == "AUTH_OK" then
             myProfile = msg.profile
-            currentObj = crypt(msg.obj, KEY) -- Дешифровка задачи
+            myToken = msg.token -- СОХРАНЯЕМ ТОКЕН
             return 
         elseif msg and msg.type == "AUTH_FAIL" then
             msgText = "DENIED: " .. (msg.reason or "Unknown")
         else
-            msgText = "ERROR: HQ No Response"
+            msgText = "ERROR: HQ No Response / Key Mismatch"
         end
     end
 end
@@ -120,9 +119,7 @@ end
 
 local function drawUI()
     local w, h = term.getSize()
-    term.setBackgroundColor(colors.black)
-    term.clear()
-    term.setCursorPos(1,1)
+    term.setBackgroundColor(colors.black); term.clear(); term.setCursorPos(1,1)
     
     local function drawTab(name, mode)
         if activeTab == mode then
@@ -168,19 +165,17 @@ end
 
 local function netLoop()
     while true do
-        local id, msg = rednet.receive(PROTOCOL)
+        local id, msg = receiveEncrypted()
         if msg and msg.type == "CHAT_LINE" then
             if (activeTab ~= "CMD" and msg.channel == "CMD") then
                 local s = peripheral.find("speaker"); if s then s.playNote("hat", 1, 15) end
             end
-
-            -- Дешифруем входящее
-            local decrypted = crypt(msg.text, KEY)
             
-            if msg.channel == "CMD" then addLog(cmdLogs, decrypted, msg.color)
-            elseif msg.channel == "GLOBAL" then addLog(squadLogs, decrypted, msg.color) 
+            -- Данные уже расшифрованы функцией receiveEncrypted
+            if msg.channel == "CMD" then addLog(cmdLogs, msg.from..": "..msg.text, msg.color)
+            elseif msg.channel == "GLOBAL" then addLog(squadLogs, "[ALL] "..msg.from..": "..msg.text, msg.color) 
             elseif msg.channel == "SQUAD" and msg.targetSquad == myProfile.squad then
-                addLog(squadLogs, decrypted, msg.color)
+                addLog(squadLogs, msg.from..": "..msg.text, msg.color)
             end
             drawUI()
         end
@@ -190,7 +185,6 @@ end
 local function inputLoop()
     while true do
         local event, key = os.pullEvent("key")
-        if not serverID then serverID = os.getComputerID() end
 
         if key == keys.tab then
             if activeTab == "SQUAD" then activeTab = "CMD"
@@ -202,14 +196,12 @@ local function inputLoop()
             os.reboot()
             
         elseif key == keys.o and activeTab == "SQUAD" then
-            term.setCursorPos(1, 12)
-            term.setTextColor(colors.yellow)
+            term.setCursorPos(1, 12); term.setTextColor(colors.yellow)
             write("SET OBJ: ")
             local txt = read()
             if txt ~= "" then
-                -- Шифруем приказ
-                local encTxt = crypt(txt, KEY)
-                rednet.send(serverID, {type="SET_OBJ", text=encTxt, key="Freedom"}, PROTOCOL)
+                -- Отправляем токен и ID для проверки прав
+                sendEncrypted({type="SET_OBJ", userID=myProfile.id, token=myToken, text=txt})
             end
             drawUI()
             
@@ -220,16 +212,14 @@ local function inputLoop()
                 write("TO " .. myProfile.squad .. ": ")
                 local txt = read()
                 if txt ~= "" then
-                    local encTxt = crypt(txt, KEY)
-                    rednet.send(serverID, {type="SQUAD_CMD", text=encTxt, callsign=myProfile.id, squad=myProfile.squad}, PROTOCOL)
+                    sendEncrypted({type="SQUAD_CMD", userID=myProfile.id, token=myToken, text=txt, squad=myProfile.squad})
                 end
             elseif activeTab == "CMD" then
                 term.setTextColor(colors.cyan)
                 write("TO COMMAND: ")
                 local txt = read()
                 if txt ~= "" then
-                    local encTxt = crypt(txt, KEY)
-                    rednet.send(serverID, {type="CMD_CHAT", text=encTxt, callsign=myProfile.id}, PROTOCOL)
+                    sendEncrypted({type="CMD_CHAT", userID=myProfile.id, token=myToken, text=txt})
                 end
             end
             drawUI()

@@ -3,6 +3,7 @@
 
 local auth = require("server.modules.auth")
 local fronts = require("server.modules.fronts")
+local archive = require("server.modules.archive")
 local storage = require("server.modules.storage") -- Добавили для сохранения отрядов
 
 local modem = peripheral.find("modem")
@@ -89,48 +90,121 @@ local function receiveEncrypted()
 end
 
 -- === MAIN SERVER LOOP ===
+-- === MAIN SERVER LOOP ===
 local function netLoop()
+    print("[OK] Listening for secure packets...")
+    
     while true do
         local id, msg = receiveEncrypted()
         if type(msg) == "table" then
             
-            -- 1. АВТОРИЗАЦИЯ
+            -- === 1. АВТОРИЗАЦИЯ ===
             if msg.type == "LOGIN" then
                 local success, profile, err = auth.login(msg.userID, msg.userPass, msg.role)
                 if success then
                     local token = generateToken()
                     activeSessions[msg.userID] = token
                     sendEncrypted(id, {type="AUTH_OK", profile=profile, token=token})
+                    print("[AUTH] User " .. msg.userID .. " logged in.")
                 else
                     sendEncrypted(id, {type="AUTH_FAIL", reason=err})
                 end
-            
-            -- 2. ФРОНТЫ (Чтение)
+
+            -- === 2. ФРОНТЫ ===
             elseif msg.type == "FRONT_LIST" then
                 sendEncrypted(id, {type="FRONT_LIST", data=fronts.list()})
-                
             elseif msg.type == "FRONT_GET" then
                 sendEncrypted(id, {type="FRONT_GET", data=fronts.get(msg.id)})
 
-            -- 3. ФРОНТЫ (Запись)
-            elseif msg.type == "FRONT_SAVE" then
-                local profile = auth.get(msg.userID)
-                if profile and activeSessions[msg.userID] == msg.token then
-                    if auth.hasAccess(profile, "commander") then
-                        fronts.save(msg.front)
-                        sendEncrypted(id, {type="SAVE_OK"})
-                    else
-                        sendEncrypted(id, {type="ERROR", reason="Insufficient Role"})
-                    end
+            -- === 3. АРХИВ (ПЛАНЫ ОПЕРАЦИЙ) ===
+            elseif msg.type == "PLAN_LIST" then
+                local plans = archive.listPlans()
+                sendEncrypted(id, {type="PLAN_LIST", data=plans})
+            elseif msg.type == "PLAN_GET" then
+                local plan = archive.getPlan(msg.id)
+                if plan then
+                    sendEncrypted(id, {type="PLAN_GET", data=plan})
                 else
-                    sendEncrypted(id, {type="ERROR", reason="Invalid Session Token"})
+                    sendEncrypted(id, {type="ERROR", reason="Plan not found"})
+                end
+            elseif msg.type == "PLAN_SAVE" then
+                local profile = auth.get(msg.userID)
+                if profile and activeSessions[msg.userID] == msg.token and auth.hasAccess(profile, "commander") then
+                    local ok, err = archive.savePlan(msg.plan)
+                    if ok then
+                        sendEncrypted(id, {type="SAVE_OK"})
+                        print("[ARCHIVE] Plan '" .. msg.plan.id .. "' updated.")
+                    else
+                        sendEncrypted(id, {type="ERROR", reason=err})
+                    end
+                end
+
+            -- === 4. ЧАТЫ И ЛОГИРОВАНИЕ ===
+            elseif msg.type == "CMD_CHAT" then
+                local profile = auth.get(msg.userID)
+                if profile and activeSessions[msg.userID] == msg.token and auth.hasAccess(profile, "commander") then
+                    archive.appendLog("CMD", {from = msg.userID, text = msg.text})
+                    local response = {type = "CHAT_LINE", channel = "CMD", text = msg.text, from = msg.userID, color = (profile.role == "general") and colors.red or colors.cyan}
+                    rednet.broadcast(crypt(textutils.serialize(response), KEY), PROTOCOL)
+                    print("[CHAT] CMD: " .. msg.userID .. ": " .. msg.text)
+                end
+
+            elseif msg.type == "SQUAD_CMD" then
+                local profile = auth.get(msg.userID)
+                if profile and activeSessions[msg.userID] == msg.token and auth.hasAccess(profile, "commander") then
+                    archive.appendLog("SQD_" .. tostring(msg.squad), {from = msg.userID, text = msg.text})
+                    local response = {type = "CHAT_LINE", channel = "SQUAD", targetSquad = msg.squad, text = msg.text, from = msg.userID, color = colors.green}
+                    rednet.broadcast(crypt(textutils.serialize(response), KEY), PROTOCOL)
+                    print("[CHAT] SQUAD [" .. tostring(msg.squad) .. "]: " .. msg.userID .. ": " .. msg.text)
+                end
+            
+            
+            elseif msg.type == "SQUAD_REPORT" then
+                local profile = auth.get(msg.userID)
+                -- Солдату не нужны права командира, чтобы писать в СВОЙ отряд
+                if profile and activeSessions[msg.userID] == msg.token then
+                    if msg.squad == profile.squad then
+                        archive.appendLog("SQD_" .. tostring(msg.squad), {from = msg.userID, text = msg.text})
+                        local response = {
+                            type = "CHAT_LINE", 
+                            channel = "SQUAD", 
+                            targetSquad = msg.squad, 
+                            text = msg.text, 
+                            from = msg.userID, 
+                            color = colors.lightGray -- Цвет рядовых докладов (светло-серый)
+                        }
+                        rednet.broadcast(crypt(textutils.serialize(response), KEY), PROTOCOL)
+                        print("[CHAT] REPORT [" .. tostring(msg.squad) .. "]: " .. msg.userID .. ": " .. msg.text)
+                    end
+                end
+            -- === 5. ЧТЕНИЕ ЛОГОВ (INTEL) ===
+            elseif msg.type == "GET_LOGS" then
+                local profile = auth.get(msg.userID)
+                if profile and activeSessions[msg.userID] == msg.token and auth.hasAccess(profile, "commander") then
+                    local logData = archive.getLog(msg.channel)
+                    sendEncrypted(id, {type = "LOG_DATA", channel = msg.channel, data = logData})
+                end
+                
+            -- === 6. СМЕНА ЗАДАЧИ (SET_OBJ) ===
+            elseif msg.type == "SET_OBJ" then
+                local profile = auth.get(msg.userID)
+                if profile and activeSessions[msg.userID] == msg.token and auth.hasAccess(profile, "commander") then
+                    -- Рассылаем всем глобальный пакет с желтым текстом
+                    local response = {
+                        type = "CHAT_LINE",
+                        channel = "GLOBAL",
+                        text = "NEW ORDERS: " .. msg.text,
+                        from = "HQ",
+                        color = colors.yellow
+                    }
+                    rednet.broadcast(crypt(textutils.serialize(response), KEY), PROTOCOL)
+                    print("[OBJ] Updated by " .. msg.userID)
                 end
             end
-            
+
         end
     end
 end
-
 -- === ADMIN CLI LOOP ===
 local function adminLoop()
     while true do
