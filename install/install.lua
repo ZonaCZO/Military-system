@@ -1,4 +1,4 @@
-local BASE = "https://raw.githubusercontent.com/ZonaCZO/Military-system/MSOS-2.0/" -- Change to main before merge
+local BASE = "https://raw.githubusercontent.com/ZonaCZO/Military-system/MSOS-2.0/"
 
 print("Military System Installer v2.0")
 print("1 - Command Computer (MSOS)")
@@ -9,9 +9,7 @@ local choice = read()
 
 -- === SAFE DOWNLOAD ===
 local function download(url, path)
-    -- Удаляем файл, если он уже есть, чтобы wget не завис с вопросом об перезаписи
     if fs.exists(path) then fs.delete(path) end 
-    
     print("Downloading " .. path .. "...")
     local ok = shell.run("wget", BASE .. url, path)
     if not ok then
@@ -44,6 +42,8 @@ if choice == "1" then
     download("data/burn.lua", "pr/burn.lua")
     download("data/deaddrop.lua", "pr/deaddrop.lua")
     download("install/pda_patcher.lua", "pr/pda.lua")
+    -- ДОБАВИЛИ НОВУЮ ПРОГРАММУ
+    download("system/front_browser.lua", "pr/front_browser.lua")
 
     print("\nDownloading icons...")
     download("system/icons/general.nfp", "sys/icon/general.nfp")
@@ -72,15 +72,13 @@ elseif choice == "2" then
     mkdir("data/map/fronts")
     mkdir("data/map/sectors")
     
-    -- СОЗДАЁМ ПАПКИ ДЛЯ МОДУЛЕЙ СЕРВЕРА
     mkdir("server")
     mkdir("server/modules")
 
     print("\nDownloading core & modules...")
-    -- Скачиваем ядро в корень
     download("server/resistance_core.lua", "server.lua")
     
-    -- Скачиваем модули строго по путям, которые ожидает require()
+    -- ИСПРАВЛЕННЫЕ ПУТИ: теперь качаем из папки server/modules/ в репозитории
     download("server/modules/auth.lua", "server/modules/auth.lua")
     download("server/modules/storage.lua", "server/modules/storage.lua")
     download("server/modules/fronts.lua", "server/modules/fronts.lua")
