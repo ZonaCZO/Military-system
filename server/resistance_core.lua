@@ -90,7 +90,6 @@ local function receiveEncrypted()
 end
 
 -- === MAIN SERVER LOOP ===
--- === MAIN SERVER LOOP ===
 local function netLoop()
     print("[OK] Listening for secure packets...")
     
@@ -158,50 +157,66 @@ local function netLoop()
                     print("[CHAT] SQUAD [" .. tostring(msg.squad) .. "]: " .. msg.userID .. ": " .. msg.text)
                 end
             
-            
             elseif msg.type == "SQUAD_REPORT" then
                 local profile = auth.get(msg.userID)
-                -- Солдату не нужны права командира, чтобы писать в СВОЙ отряд
                 if profile and activeSessions[msg.userID] == msg.token then
                     if msg.squad == profile.squad then
                         archive.appendLog("SQD_" .. tostring(msg.squad), {from = msg.userID, text = msg.text})
-                        local response = {
-                            type = "CHAT_LINE", 
-                            channel = "SQUAD", 
-                            targetSquad = msg.squad, 
-                            text = msg.text, 
-                            from = msg.userID, 
-                            color = colors.lightGray -- Цвет рядовых докладов (светло-серый)
-                        }
+                        local response = {type = "CHAT_LINE", channel = "SQUAD", targetSquad = msg.squad, text = msg.text, from = msg.userID, color = colors.lightGray}
                         rednet.broadcast(crypt(textutils.serialize(response), KEY), PROTOCOL)
                         print("[CHAT] REPORT [" .. tostring(msg.squad) .. "]: " .. msg.userID .. ": " .. msg.text)
                     end
                 end
+
             -- === 5. ЧТЕНИЕ ЛОГОВ (INTEL) ===
             elseif msg.type == "GET_LOGS" then
                 local profile = auth.get(msg.userID)
                 if profile and activeSessions[msg.userID] == msg.token and auth.hasAccess(profile, "commander") then
                     local logData = archive.getLog(msg.channel)
                     sendEncrypted(id, {type = "LOG_DATA", channel = msg.channel, data = logData})
+                    print("[ARCHIVE] Sent log '" .. msg.channel .. "' to ID:" .. id)
                 end
                 
             -- === 6. СМЕНА ЗАДАЧИ (SET_OBJ) ===
             elseif msg.type == "SET_OBJ" then
                 local profile = auth.get(msg.userID)
                 if profile and activeSessions[msg.userID] == msg.token and auth.hasAccess(profile, "commander") then
-                    -- Рассылаем всем глобальный пакет с желтым текстом
-                    local response = {
-                        type = "CHAT_LINE",
-                        channel = "GLOBAL",
-                        text = "NEW ORDERS: " .. msg.text,
-                        from = "HQ",
-                        color = colors.yellow
-                    }
+                    local response = {type = "CHAT_LINE", channel = "GLOBAL", text = "NEW ORDERS: " .. msg.text, from = "HQ", color = colors.yellow}
                     rednet.broadcast(crypt(textutils.serialize(response), KEY), PROTOCOL)
                     print("[OBJ] Updated by " .. msg.userID)
                 end
-            end
 
+            -- === 7. КАРТА И РАДАР ===
+            elseif msg.type == "MAP_FRONT_GET" then
+                local profile = auth.get(msg.userID)
+                if profile and activeSessions[msg.userID] == msg.token then
+                    local map = require("server.modules.map") 
+                    local snapshot, err = map.getFrontSnapshot(msg.frontId)
+                    if snapshot then
+                        sendEncrypted(id, {type="MAP_FRONT_DATA", data=snapshot})
+                    else
+                        sendEncrypted(id, {type="ERROR", reason=err or "Snapshot failed"})
+                    end
+                end
+
+            -- === 8. УСТАНОВКА МАРКЕРА (НОВОЕ!) ===
+            elseif msg.type == "MAP_ADD_MARKER" then
+                local profile = auth.get(msg.userID)
+                if profile and activeSessions[msg.userID] == msg.token and auth.hasAccess(profile, "commander") then
+                    local ok, err = fronts.addMarker(msg.frontId, {
+                        type = msg.markerType,
+                        label = msg.label,
+                        x = tonumber(msg.x) or 0,
+                        z = tonumber(msg.z) or 0
+                    })
+                    if ok then
+                        sendEncrypted(id, {type="SAVE_OK"})
+                        print("[MAP] Marker added to " .. tostring(msg.frontId) .. " by " .. msg.userID)
+                    else
+                        sendEncrypted(id, {type="ERROR", reason=err or "Failed to add marker"})
+                    end
+                end
+            end
         end
     end
 end

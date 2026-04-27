@@ -1,10 +1,14 @@
 local BASE = "https://raw.githubusercontent.com/ZonaCZO/Military-system/main/"
 
-print("Military System Installer v2.0")
-print("1 - Command Computer (MSOS)")
-print("2 - Server (Core)")
-
-write("Select type: ")
+term.clear()
+term.setCursorPos(1,1)
+term.setTextColor(colors.green)
+print("=== MILITARY SYSTEM V14.3 ===")
+term.setTextColor(colors.white)
+print("1 - Command PC (HQ / MSOS)")
+print("2 - Central Server (Core)")
+print(string.rep("-", 29))
+write("Select installation (1-2): ")
 local choice = read()
 
 -- === SAFE DOWNLOAD ===
@@ -13,57 +17,61 @@ local function download(url, path)
     print("Downloading " .. path .. "...")
     local ok = shell.run("wget", BASE .. url, path)
     if not ok then
+        term.setTextColor(colors.red)
         print("ERROR downloading: " .. url)
+        term.setTextColor(colors.white)
         return false
     end
     return true
 end
 
 local function mkdir(path)
-    if not fs.exists(path) then
-        fs.makeDir(path)
-    end
+    if not fs.exists(path) then fs.makeDir(path) end
 end
 
 -- =========================
--- CLIENT INSTALL
+-- 1. COMMAND PC (MSOS)
 -- =========================
 if choice == "1" then
-    
     print("\nCreating directories...")
     mkdir("pr")
     mkdir("sys")
     mkdir("sys/icon")
     mkdir("startup")
     
-    print("\nDownloading software...")
+    print("\nDownloading Command Software...")
     download("server/general.lua", "pr/general.lua")
     download("server/leader.lua", "pr/commander.lua")
     download("data/burn.lua", "pr/burn.lua")
     download("data/deaddrop.lua", "pr/deaddrop.lua")
     download("install/pda_patcher.lua", "pr/pda.lua")
-    -- ДОБАВИЛИ НОВУЮ ПРОГРАММУ
+    
+    print("\nDownloading Strategic Modules...")
     download("system/front_browser.lua", "pr/front_browser.lua")
+    download("system/plan_browser.lua", "pr/plan_browser.lua")
+    download("system/radar.lua", "pr/radar.lua")
 
-    print("\nDownloading icons...")
+    print("\nDownloading Icons...")
     download("system/icons/general.nfp", "sys/icon/general.nfp")
     download("system/icons/commander.nfp", "sys/icon/commander.nfp")
     download("system/icons/burn.nfp", "sys/icon/burn.nfp")
     download("system/icons/deaddrop.nfp", "sys/icon/deaddrop.nfp")
     download("system/icons/pda.nfp", "sys/icon/pda.nfp")
-
-    print("\nInstalling system...")
+    
+    print("\nInstalling Base System...")
     download("system/system.lua", "system.lua")
     download("system/cyrillic.lua", "startup/cyrillic.lua")
 
-    print("\nCommand system installed.")
+    local f = fs.open("startup.lua", "w")
+    f.write('shell.run("system")')
+    f.close()
+    print("\nAuto-boot configured for MSOS.")
 
 -- =========================
--- SERVER INSTALL
+-- 2. CENTRAL SERVER
 -- =========================
 elseif choice == "2" then
-    
-    print("\nCreating server directories...")
+    print("\nCreating Server Directories...")
     mkdir("data")
     mkdir("data/archive")
     mkdir("data/archive/plans")
@@ -71,51 +79,37 @@ elseif choice == "2" then
     mkdir("data/map")
     mkdir("data/map/fronts")
     mkdir("data/map/sectors")
-    
     mkdir("server")
     mkdir("server/modules")
 
-    print("\nDownloading core & modules...")
+    print("\nDownloading Server Core...")
     download("server/resistance_core.lua", "server.lua")
     
-    -- ИСПРАВЛЕННЫЕ ПУТИ: теперь качаем из папки server/modules/ в репозитории
+    print("Downloading Core Modules...")
     download("server/modules/auth.lua", "server/modules/auth.lua")
     download("server/modules/storage.lua", "server/modules/storage.lua")
     download("server/modules/fronts.lua", "server/modules/fronts.lua")
     download("server/modules/map.lua", "server/modules/map.lua")
     download("server/modules/archive.lua", "server/modules/archive.lua")
 
-    print("\nServer installed.")
+    local f = fs.open("startup.lua", "w")
+    f.write('shell.run("server")')
+    f.close()
+    print("\nAuto-boot configured for Server.")
 
 else
-    print("Invalid choice.")
+    term.setTextColor(colors.red)
+    print("Invalid choice. Installation aborted.")
+    term.setTextColor(colors.white)
     return
 end
-
--- =========================
--- AUTOBOOT
--- =========================
-print("\nConfiguring auto-boot...")
-
-local f = fs.open("startup.lua", "w")
-
-if choice == "1" then
-    f.write('shell.run("system")')
-    print("Auto-boot → MSOS")
-else
-    f.write('shell.run("server")')
-    print("Auto-boot → Server")
-end
-
-f.close()
 
 -- =========================
 -- FINISH
 -- =========================
 term.setTextColor(colors.green)
-print("\nINSTALL COMPLETE")
-
+print("\n=== INSTALL COMPLETE ===")
 term.setTextColor(colors.yellow)
-print("Press Enter to reboot...")
+print("Press Enter to reboot device...")
 read()
 os.reboot()

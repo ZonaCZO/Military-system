@@ -1,5 +1,5 @@
--- === FRONT COMMAND CENTER V1.0 ===
--- [PC INTERFACE]
+-- === FRONT COMMAND CENTER V14.2 ===
+-- [SECURE PC INTERFACE]
 
 local modem = peripheral.find("modem")
 if not modem then error("No modem found!") end
@@ -9,7 +9,6 @@ rednet.open(peripheral.getName(modem))
 local PROTOCOL = "default_net"
 local KEY = "none"
 
--- Читаем конфиг сети (созданный system.lua или вручную)
 if fs.exists(".net_config.txt") then
     local f = fs.open(".net_config.txt", "r")
     PROTOCOL = f.readLine()
@@ -37,40 +36,50 @@ local function crypt(text, key)
     return table.concat(output)
 end
 
+-- === SECURE NETWORKING WRAPPERS ===
+local function sendEncrypted(data)
+    local payload = textutils.serialize(data)
+    local encrypted = crypt(payload, KEY)
+    rednet.send(serverID, encrypted, PROTOCOL)
+end
+
+local function receiveEncrypted(timeout)
+    local id, msg = rednet.receive(PROTOCOL, timeout)
+    if type(msg) == "string" then
+        local decrypted = crypt(msg, KEY)
+        return id, textutils.unserialize(decrypted)
+    end
+    return id, nil
+end
+
 -- === DATA & STATE ===
 local fronts = {}
 local selectedIndex = 1
-local mode = "LIST" -- "LIST" или "DETAILS"
+local mode = "LIST" 
 local isLoading = true
 
--- === NETWORKING ===
 local function fetchFronts()
     isLoading = true
-    drawUI()
+    -- Отрисовываем UI перед запросом, функция drawUI будет вызвана ниже
     if not serverID then serverID = rednet.lookup(PROTOCOL, "central_core") end
     
     if serverID then
-        -- Отправляем запрос на список фронтов
-        rednet.send(serverID, {type = "FRONT_LIST"}, PROTOCOL)
-        local id, msg = rednet.receive(PROTOCOL, 3)
+        sendEncrypted({type = "FRONT_LIST"})
+        local id, msg = receiveEncrypted(3)
         
         if msg and msg.type == "FRONT_LIST" then
-            -- Дешифруем данные, если сервер их зашифровал (зависит от твоего нового ядра)
-            -- Здесь предполагаем, что msg.data содержит таблицу фронтов из fronts.lua
             fronts = msg.data or {}
         end
     end
     isLoading = false
-    drawUI()
 end
 
 -- === UI DRAWING ===
-function drawUI()
+local function drawUI()
     local w, h = term.getSize()
     term.setBackgroundColor(colors.gray)
     term.clear()
     
-    -- Шапка
     paintutils.drawFilledBox(1, 1, w, 1, colors.black)
     term.setCursorPos(2, 1)
     term.setTextColor(colors.yellow)
@@ -85,7 +94,6 @@ function drawUI()
     end
 
     if mode == "LIST" then
-        -- Список фронтов
         if #fronts == 0 then
             term.setCursorPos(2, 3); term.setTextColor(colors.red); write("No active fronts found.")
         else
@@ -100,14 +108,12 @@ function drawUI()
                         term.setTextColor(colors.lightGray)
                     end
                     term.setCursorPos(2, y)
-                    -- Добиваем пробелами до конца экрана для красивого выделения
                     local line = string.format("[%s] %s (%s)", front.id, front.name, front.type)
                     write(line .. string.rep(" ", w - #line - 1))
                 end
             end
         end
         
-        -- Подсказки управления
         term.setBackgroundColor(colors.black)
         term.setTextColor(colors.white)
         term.setCursorPos(1, h)
@@ -132,7 +138,6 @@ function drawUI()
         term.setCursorPos(3, 10); term.setTextColor(colors.orange); write("MARKERS: " .. #(front.markers or {}))
         term.setCursorPos(3, 11); term.setTextColor(colors.green); write("PLANS ATTACHED: " .. #(front.plans or {}))
         
-        -- Подсказки управления
         term.setBackgroundColor(colors.black)
         term.setTextColor(colors.white)
         term.setCursorPos(1, h)
@@ -160,11 +165,12 @@ local function inputLoop()
                 drawUI()
             elseif key == keys.r then
                 fetchFronts()
+                drawUI()
             elseif key == keys.q then
                 term.setBackgroundColor(colors.black)
                 term.clear()
                 term.setCursorPos(1,1)
-                return -- Выход обратно в систему
+                return 
             end
         elseif mode == "DETAILS" then
             if key == keys.backspace then
@@ -183,4 +189,5 @@ end
 -- ЗАПУСК
 term.clear()
 fetchFronts()
+drawUI()
 inputLoop()
