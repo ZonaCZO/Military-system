@@ -50,6 +50,7 @@ if choice == "1" then
     download("system/front_browser.lua", "pr/front_browser.lua")
     download("system/plan_browser.lua", "pr/plan_browser.lua")
     download("system/radar.lua", "pr/radar.lua")
+    download("ballistix/nuke_center.lua", "pr/rocket.lua")
 
     print("\nDownloading Icons...")
     download("system/icons/general.nfp", "sys/icon/general.nfp")
