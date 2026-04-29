@@ -96,15 +96,9 @@ local function autoScan()
 end
 
 local function loadPrograms()
-    if fs.exists(programFile) then
-        local f = fs.open(programFile, "r")
-        local data = f.readAll()
-        f.close()
-        programs = textutils.unserialize(data)
-        if not programs then autoScan() end
-    else
-        autoScan()
-    end
+    -- Просто сканируем папки при каждом запуске системы.
+    -- Любой новый файл в папке 'pr' сразу появится на экране!
+    autoScan()
 end
 
 -- === ЗАГРУЗКА (BOOT SCREEN) ===

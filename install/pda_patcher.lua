@@ -1,7 +1,7 @@
 -- === TACTICAL PDA DEPLOYMENT TOOL (GITHUB) ===
--- [Installs Tracker & Rebel via GitHub]
+-- [Installs Tracker, Rebel & PDAOS via GitHub]
 
--- Используем RAW ссылки, чтобы скачать чистый код, а не веб-страницу
+-- Используем RAW ссылки, чтобы скачать чистый код
 local pdaFiles = {
     {
         name = "tracker.lua", 
@@ -10,6 +10,10 @@ local pdaFiles = {
     {
         name = "rebel.lua",   
         url = "https://raw.githubusercontent.com/ZonaCZO/Military-system/main/patch/rebel.lua"
+    },
+    {
+        name = "PDAOS.lua",   
+        url = "https://raw.githubusercontent.com/ZonaCZO/Military-system/main/patch/PDAOS.lua"
     }
 }
 
@@ -44,7 +48,7 @@ if not driveSide then
     print("Configuring startup...")
     local f = fs.open("startup.lua", "w")
     f.writeLine('shell.run("bg tracker.lua")') -- Запуск трекера в фоне
-    f.writeLine('shell.run("rebel.lua")')      -- Запуск основной программы
+    f.writeLine('shell.run("PDAOS.lua")')      -- Запуск ОС Планшета
     f.close()
     
     print("Done. Rebooting...")
@@ -80,7 +84,6 @@ else
             print(" -> " .. file.name)
             
             -- Скачиваем во временный файл, потом перемещаем на диск
-            -- Это надежнее, чем качать напрямую на диск иногда
             shell.run("wget", file.url, "temp_download")
             
             if fs.exists("temp_download") then
@@ -96,7 +99,7 @@ else
         -- Создание startup на диске
         local s = fs.open(fs.combine(path, "startup.lua"), "w")
         s.writeLine('shell.run("bg tracker.lua")')
-        s.writeLine('shell.run("rebel.lua")')
+        s.writeLine('shell.run("PDAOS.lua")')
         s.close()
         
         disk.setLabel(driveSide, "PDA")
