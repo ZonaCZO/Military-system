@@ -298,7 +298,65 @@ local function netLoop()
                     end
                 end
             end
-        end
+            -- === 9. РАДАР (ТРЕВОГА) ===
+            elseif msg.type == "RADAR_ALERT" then
+                archive.appendLog("CMD", {from = "RADAR", text = msg.text})
+                local response = {
+                    type = "CHAT_LINE",
+                    channel = "GLOBAL",
+                    alert = true, 
+                    text = msg.text,
+                    from = "RADAR",
+                    color = colors.red
+                }
+                rednet.broadcast(crypt(textutils.serialize(response), KEY), PROTOCOL)
+                print("[ALARM] " .. msg.text)
+                
+            -- === 10. СИНХРОНИЗАЦИЯ УЗЛОВ ===
+            elseif msg.type == "NODE_SYNC" then
+                -- Сервер запоминает состояние узла
+                if not activeNodes then activeNodes = {} end
+                activeNodes[msg.nodeId] = {
+                    type = msg.nodeType,
+                    telemetry = msg.telemetry,
+                    lastSeen = os.epoch("utc")
+                }
+                
+            -- === 11. ЗАПРОС СПИСКА УЗЛОВ (ДЛЯ ЦЕНТРА) ===
+            elseif msg.type == "GET_NODES" then
+                local profile = auth.get(msg.userID)
+                if profile and activeSessions[msg.userID] == msg.token then
+                    local current = os.epoch("utc")
+                    local list = {}
+                    if activeNodes then
+                        for k, v in pairs(activeNodes) do
+                            if current - v.lastSeen < 15000 then -- Таймаут 15 секунд
+                                list[k] = v
+                            else
+                                activeNodes[k] = nil -- Узел отключился
+                            end
+                        end
+                    end
+                    sendEncrypted(id, {type="NODE_LIST", data=list})
+                end
+
+            -- === 12. ДИСТАНЦИОННЫЙ ЗАПУСК ===
+            elseif msg.type == "SILO_FIRE_CMD" then
+                local profile = auth.get(msg.userID)
+                if profile and activeSessions[msg.userID] == msg.token and auth.hasAccess(profile, "commander") then
+                    archive.appendLog("CMD", {from = msg.userID, text = "LAUNCH AUTHORIZED: " .. tostring(msg.targetNode)})
+                    
+                    -- Сервер пересылает приказ всем, но отреагирует только нужная шахта
+                    local response = {
+                        type = "SILO_FIRE_CMD",
+                        targetNode = msg.targetNode,
+                        x = msg.x, y = msg.y, z = msg.z
+                    }
+                    rednet.broadcast(crypt(textutils.serialize(response), KEY), PROTOCOL)
+                    print("[ALARM] LAUNCH COMMAND SENT TO " .. tostring(msg.targetNode) .. " BY " .. msg.userID)
+                end
+            end
+        
     end
 end
 

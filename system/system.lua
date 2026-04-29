@@ -1,4 +1,4 @@
--- === MSOS V1.5 ===
+-- === MSOS V1.6 (WITH TERMINAL & MULTISHELL) ===
 -- [GRAPHICAL LAUNCHER]
 
 local bgCol = colors.gray
@@ -7,7 +7,7 @@ local txtCol = colors.white
 
 -- === НАСТРОЙКИ ===
 local sysDir = "sys"
-local iconDir = fs.combine(sysDir, "icon") -- Папка иконок
+local iconDir = fs.combine(sysDir, "icon")
 local prDir = "pr"
 
 if not fs.exists(sysDir) then fs.makeDir(sysDir) end
@@ -16,13 +16,13 @@ if not fs.exists(prDir) then fs.makeDir(prDir) end
 
 local programFile = fs.combine(sysDir, "programs.db")
 
--- Файлы для игнора
 local blacklist = {
     ["resistance_core.lua"] = true,
     ["leader.lua"] = true,
     ["startup.lua"] = true,
     ["menu.lua"] = true,
     ["system.lua"] = true,
+    ["PDAOS.lua"] = true,
     ["install.lua"] = true,
     ["rom"] = true,
     [".net_config.txt"] = true,
@@ -39,7 +39,6 @@ local shopItems = {
 }
 
 -- === УПРАВЛЕНИЕ ===
-
 local function savePrograms()
     local f = fs.open(programFile, "w")
     f.write(textutils.serialize(programs))
@@ -48,32 +47,36 @@ end
 
 local function generateEntry(filepath)
     local fullName = fs.getName(filepath)
-    -- Убираем расширение .lua для чистого имени
     local rawName = fullName:gsub("%.lua$", "") 
-    
-    -- Ищем иконку в папке sys/icon/ с таким же именем + .nfp
     local iconPath = fs.combine(iconDir, rawName .. ".nfp")
     local hasIcon = fs.exists(iconPath)
 
-    -- Стандартная генерация (цвета для квадратов, если нет иконки)
     local label = rawName:sub(1,2):upper()
     local color = colors.lightBlue
     if rawName:find("general") then color = colors.red end
     if rawName:find("relay") then color = colors.green end
     
     return {
-        name = filepath,    -- Полный путь (pr/general.lua)
-        shortName = rawName, -- Чистое имя (general)
+        name = filepath,
+        shortName = rawName,
         label = label,
         color = color,
-        icon = hasIcon and iconPath or nil -- Путь к иконке (sys/icon/general.nfp)
+        icon = hasIcon and iconPath or nil
     }
 end
 
 local function autoScan()
     programs = {}
     
-    -- 1. Корень
+    -- Встроенная программа: Терминал
+    table.insert(programs, {
+        name = "shell",
+        shortName = "Terminal",
+        label = ">_",
+        color = colors.black,
+        icon = nil
+    })
+    
     local rootFiles = fs.list("/")
     for _, file in ipairs(rootFiles) do
         if not blacklist[file] and not fs.isDir(file) and file:find(".lua") then
@@ -81,7 +84,6 @@ local function autoScan()
         end
     end
     
-    -- 2. Папка PR
     if fs.exists(prDir) then
         local prFiles = fs.list(prDir)
         for _, file in ipairs(prFiles) do
@@ -91,43 +93,37 @@ local function autoScan()
             end
         end
     end
-    
     savePrograms()
 end
 
 local function loadPrograms()
-    -- Просто сканируем папки при каждом запуске системы.
-    -- Любой новый файл в папке 'pr' сразу появится на экране!
     autoScan()
 end
 
--- === ЗАГРУЗКА (BOOT SCREEN) ===
+-- === ЗАГРУЗКА ===
 local function playBootSequence()
     local w, h = term.getSize()
     term.setBackgroundColor(colors.black)
     term.clear()
     
-    -- Логотип
-    term.setCursorPos(w/2 - 2, h/2 - 2)
+    term.setCursorPos(math.floor(w/2) - 2, math.floor(h/2) - 2)
     term.setTextColor(colors.yellow)
     write("MSOS")
     
-    -- Рамка прогресса
     local barW = 14
-    local startX = w/2 - barW/2
-    term.setCursorPos(startX, h/2)
+    local startX = math.floor(w/2) - math.floor(barW/2)
+    term.setCursorPos(startX, math.floor(h/2))
     term.setTextColor(colors.gray)
     write("[" .. string.rep("-", barW-2) .. "]")
     
-    -- Анимация заполнения
     term.setTextColor(colors.blue)
     for i = 1, barW-2 do
-        term.setCursorPos(startX + i, h/2)
+        term.setCursorPos(startX + i, math.floor(h/2))
         write("#")
         sleep(0.05)
     end
     
-    term.setCursorPos(w/2 - 3, h/2 + 2)
+    term.setCursorPos(math.floor(w/2) - 3, math.floor(h/2) + 2)
     term.setTextColor(colors.green)
     write("ONLINE")
     sleep(0.5)
@@ -141,17 +137,20 @@ local function drawHeader()
     term.setTextColor(colors.yellow)
     write("MSOS")
     
-    term.setCursorPos(w-8, 1)
-    term.setTextColor(colors.lightGray)
-    write(textutils.formatTime(os.time(), true))
+    if w >= 35 then
+        term.setCursorPos(w-8, 1)
+        term.setTextColor(colors.lightGray)
+        write(textutils.formatTime(os.time(), true))
+    end
     
-    paintutils.drawFilledBox(1, h, w/2, h, (mode=="HOME" and colors.blue or colors.gray))
-    term.setCursorPos(w/4 - 2, h)
+    local mid = math.floor(w/2)
+    paintutils.drawFilledBox(1, h, mid, h, (mode=="HOME" and colors.blue or colors.gray))
+    term.setCursorPos(math.floor(w/4) - 1, h)
     term.setTextColor(colors.white)
     write("HOME")
     
-    paintutils.drawFilledBox(w/2+1, h, w, h, (mode=="SHOP" and colors.green or colors.gray))
-    term.setCursorPos(w*0.75 - 2, h)
+    paintutils.drawFilledBox(mid+1, h, w, h, (mode=="SHOP" and colors.green or colors.gray))
+    term.setCursorPos(math.floor(w*0.75) - 2, h)
     write("STORE")
 end
 
@@ -166,17 +165,14 @@ local function drawHome()
     end
 
     for i, prog in ipairs(programs) do
-        -- ЕСЛИ ЕСТЬ ИКОНКА - РИСУЕМ ЕЁ
         if prog.icon then
             local img = paintutils.loadImage(prog.icon)
             if img then
                 paintutils.drawImage(img, x, y)
             else
-                -- Если файл картинки поврежден
                 paintutils.drawFilledBox(x, y, x+6, y+4, prog.color)
             end
         else
-            -- ИНАЧЕ РИСУЕМ ОБЫЧНЫЙ КВАДРАТ
             paintutils.drawFilledBox(x, y, x+6, y+4, prog.color)
             term.setCursorPos(x+2, y+2)
             term.setBackgroundColor(prog.color)
@@ -184,12 +180,10 @@ local function drawHome()
             write(prog.label)
         end
         
-        -- Подпись (без .lua)
         term.setBackgroundColor(bgCol)
         term.setTextColor(txtCol)
         term.setCursorPos(x, y+5)
-        local displayName = prog.shortName:sub(1, 7) -- Показываем до 7 букв
-        write(displayName)
+        write(prog.shortName:sub(1, 7))
         
         prog.clickBounds = {x1=x, y1=y, x2=x+6, y2=y+4}
         
@@ -201,13 +195,18 @@ end
 local function drawShop()
     local w, h = term.getSize()
     local y = 3
-    term.setCursorPos(2, y); term.setTextColor(colors.yellow); print("MSOS NETWORK STORE")
+    term.setCursorPos(2, y); term.setTextColor(colors.yellow)
+    print(w < 35 and "STORE" or "MSOS NETWORK STORE")
     y = y + 2
     for i, item in ipairs(shopItems) do
         term.setCursorPos(2, y); term.setBackgroundColor(colors.white); term.setTextColor(colors.black)
         write(" GET ")
         term.setBackgroundColor(bgCol); term.setTextColor(colors.white)
-        write(" " .. item.name .. " - " .. item.desc)
+        if w < 35 then
+            write(" " .. item.name)
+        else
+            write(" " .. item.name .. " - " .. item.desc)
+        end
         item.clickBounds = {x1=2, y1=y, x2=6, y2=y}
         y = y + 2
     end
@@ -215,25 +214,37 @@ end
 
 -- === ЛОГИКА ===
 local function runProgram(filename)
+    -- Если это встроенный терминал
+    if filename == "shell" then
+        -- Открываем командную строку в новой вкладке (multishell)
+        shell.run("fg", "shell")
+        -- После закрытия вкладки (командой exit) перерисовываем рабочий стол
+        term.setBackgroundColor(bgCol); term.clear()
+        return
+    end
+
     if not fs.exists(filename) then
         term.setBackgroundColor(bgCol); term.clear(); print("File missing!"); sleep(1); autoScan(); return
     end
-    term.setBackgroundColor(colors.black); term.clear(); term.setCursorPos(1,1)
+    
+    -- Запускаем любую программу как отдельное окно через Multishell
     shell.run("fg", filename)
+    
+    -- Когда программа закрывается, возвращаем фон рабочего стола
     term.setBackgroundColor(bgCol); term.clear()
 end
 
 local function downloadProgram(item)
     local w, h = term.getSize()
-    paintutils.drawFilledBox(5, h/2-2, w-5, h/2+2, colors.blue)
-    term.setCursorPos(7, h/2); term.setTextColor(colors.white); term.setBackgroundColor(colors.blue)
+    paintutils.drawFilledBox(5, math.floor(h/2)-2, w-5, math.floor(h/2)+2, colors.blue)
+    term.setCursorPos(7, math.floor(h/2)); term.setTextColor(colors.white); term.setBackgroundColor(colors.blue)
     write("Downloading " .. item.name .. "...")
     if not http then return end
     
     local fileName = fs.combine(prDir, item.name..".lua")
     shell.run("pastebin", "get", item.code, fileName)
     
-    autoScan() -- Обновляем, чтобы найти и программу, и (если повезет) иконку
+    autoScan()
     sleep(1)
 end
 
@@ -253,7 +264,7 @@ while true do
     local w, h = term.getSize()
     
     if y == h then
-        if x < w/2 then mode = "HOME" else mode = "SHOP" end
+        if x <= math.floor(w/2) then mode = "HOME" else mode = "SHOP" end
     elseif mode == "HOME" then
         for _, prog in ipairs(programs) do
             if prog.clickBounds and x >= prog.clickBounds.x1 and x <= prog.clickBounds.x2 
