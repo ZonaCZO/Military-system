@@ -16,7 +16,7 @@ if not fs.exists(prDir) then fs.makeDir(prDir) end
 local blacklist = {
     ["resistance_core.lua"] = true, ["leader.lua"] = true, ["startup.lua"] = true,
     ["menu.lua"] = true, ["system.lua"] = true, ["install.lua"] = true,
-    ["rom"] = true, [".net_config.txt"] = true, [sysDir] = true, [prDir] = true
+    ["rom"] = true, [".net_config.txt"] = true, [sysDir] = true, [prDir] = true, [PDAOS] = true
 }
 
 local mode = "HOME"

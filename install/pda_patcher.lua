@@ -8,7 +8,7 @@ local pdaFiles = {
         url = "https://raw.githubusercontent.com/ZonaCZO/Military-system/main/patch/tracker.lua"
     },
     {
-        name = "rebel.lua",   
+        name = "Soldier.lua",   
         url = "https://raw.githubusercontent.com/ZonaCZO/Military-system/main/patch/rebel.lua"
     },
     {
