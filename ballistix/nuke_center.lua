@@ -78,7 +78,7 @@ redrun.init()
 redrun.start(cyrrun, 'cyrrun')
 
 -- ==========================================
--- === STRATEGIC COMMAND CENTER V1.0 ===
+-- === STRATEGIC COMMAND CENTER V1.1 ===
 -- [GLOBAL MISSILE & RADAR CONTROL]
 -- ==========================================
 
@@ -98,6 +98,7 @@ local function crypt(text, key)
         i = (i + 1) % 256; j = (j + S[i]) % 256
         S[i], S[j] = S[j], S[i]
         local K = S[(S[i] + S[j]) % 256]
+        -- ИСПРАВЛЕНА ОПЕЧАТКА ЗДЕСЬ (Большая 'K' вместо маленькой 'k')
         table.insert(output, string.char(bit.bxor(string.byte(text, k), K)))
     end
     return table.concat(output)
@@ -143,7 +144,7 @@ local function login()
             if msg and msg.type == "AUTH_OK" then
                 myProfile = msg.profile; myToken = msg.token; return 
             elseif msg and msg.type == "AUTH_FAIL" then msgText = "ACCESS DENIED: " .. (msg.reason or "Unknown")
-            else msgText = "ERROR: No response from HQ." end
+            else msgText = "ERROR: No response from HQ or Bad Key." end
         else msgText = "ERROR: Server Offline." end
     end
 end
@@ -155,12 +156,15 @@ local nodeIds = {}
 local selectedIdx = 1
 local alerts = {}
 local statusMsg = ""
+local isPrompting = false 
 
 local function fetchNodes()
     sendEncrypted({type="GET_NODES", userID=myProfile.id, token=myToken})
 end
 
 local function drawUI()
+    if isPrompting then return end
+    
     local w, h = term.getSize()
     term.setBackgroundColor(colors.black); term.clear()
     
@@ -207,7 +211,7 @@ local function drawUI()
         
         term.setCursorPos(x, 5); term.setTextColor(colors.yellow); write("STATUS: ")
         if tel.status == "READY" or tel.status == "SCANNING" then term.setTextColor(colors.green)
-        elseif tel.status == "ALERT" then term.setTextColor(colors.red)
+        elseif tel.status == "ALERT" or tel.status == "ERROR" or tel.status == "OFFLINE" then term.setTextColor(colors.red)
         else term.setTextColor(colors.orange) end
         write(tel.status or "UNKNOWN")
         
@@ -237,10 +241,16 @@ local function drawUI()
     term.setCursorPos(w - 20, h); term.setTextColor(colors.black); write("[Up/Dn]  [Q] Exit")
 end
 
-local function netLoop()
+local function fetchLoop()
     while true do
         fetchNodes()
-        local id, msg = receiveEncrypted(2)
+        sleep(2) 
+    end
+end
+
+local function netLoop()
+    while true do
+        local id, msg = receiveEncrypted()
         if msg then
             if msg.type == "NODE_LIST" then
                 activeNodes = msg.data
@@ -256,8 +266,6 @@ local function netLoop()
                 local s = peripheral.find("speaker"); if s then s.playNote("bit", 3, 10) end
                 drawUI()
             end
-        else
-            drawUI() -- Redraw to animate ping
         end
     end
 end
@@ -275,14 +283,24 @@ local function inputLoop()
             local nid = nodeIds[selectedIdx]
             local node = activeNodes[nid]
             if node and (node.type == "SILO" or node.type == "ABM") then
-                term.setCursorPos(2, 14); term.setBackgroundColor(colors.black); term.setTextColor(colors.yellow)
+                isPrompting = true 
+                
+                local w, h = term.getSize()
+                local textX = math.floor(w * 0.4) + 2
+                
+                term.setBackgroundColor(colors.black)
+                term.setCursorPos(textX, 12); term.setTextColor(colors.yellow)
                 write("Target X: "); local tx = tonumber(read())
-                write(" Target Y: "); local ty = tonumber(read())
-                write(" Target Z: "); local tz = tonumber(read())
+                
+                term.setCursorPos(textX, 13);
+                write("Target Y: "); local ty = tonumber(read())
+                
+                term.setCursorPos(textX, 14);
+                write("Target Z: "); local tz = tonumber(read())
                 
                 if tx and ty and tz then
-                    term.setTextColor(colors.red)
-                    write("CONFIRM LAUNCH (YES): ")
+                    term.setCursorPos(textX, 16); term.setTextColor(colors.red)
+                    write("CONFIRM (YES): ")
                     if read() == "YES" then
                         sendEncrypted({
                             type = "SILO_FIRE_CMD",
@@ -294,6 +312,8 @@ local function inputLoop()
                         statusMsg = "LAUNCH COMMAND TRANSMITTED TO " .. nid
                     else statusMsg = "Aborted." end
                 else statusMsg = "Invalid coordinates." end
+                
+                isPrompting = false 
                 drawUI()
             end
             
@@ -303,4 +323,5 @@ local function inputLoop()
     end
 end
 
-parallel.waitForAny(netLoop, inputLoop)
+drawUI()
+parallel.waitForAny(fetchLoop, netLoop, inputLoop)

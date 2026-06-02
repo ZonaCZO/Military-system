@@ -78,17 +78,14 @@ redrun.init()
 redrun.start(cyrrun, 'cyrrun')
 
 -- ==========================================
--- === TACTICAL NODE DAEMON V1.0 ===
--- [SILO & RADAR NETWORK CLIENT]
+-- === TACTICAL NODE DAEMON V1.3 ===
+-- [BALLISTIX DIRECT API]
 -- ==========================================
 
 local modem = peripheral.find("modem")
 if not modem then error("No Wireless Modem found!") end
 rednet.open(peripheral.getName(modem))
 
-local silo = peripheral.find("siloController")
-
--- === КРИПТОГРАФИЯ (RC4) ===
 local function crypt(text, key)
     if not key or key == "" or key == "none" then return text end
     local S = {}; for i = 0, 255 do S[i] = i end
@@ -107,11 +104,10 @@ local function crypt(text, key)
     return table.concat(output)
 end
 
--- === КОНФИГУРАЦИЯ УЗЛА ===
 local PROTOCOL = "default_net"
 local KEY = "none"
 local NODE_ID = "UNKNOWN"
-local NODE_TYPE = "SILO" -- Варианты: SILO, ABM, RADAR
+local NODE_TYPE = "SILO" 
 local configFile = ".node_config.txt"
 
 if fs.exists(configFile) and fs.exists(".net_config.txt") then
@@ -170,7 +166,6 @@ local function receiveEncrypted(timeout)
     return id, nil
 end
 
--- Вспомогательная функция проверки редстоуна (на всех сторонах компа)
 local function isRadarTriggered()
     for _, side in ipairs(rs.getSides()) do
         if rs.getInput(side) then return true end
@@ -178,24 +173,45 @@ local function isRadarTriggered()
     return false
 end
 
+-- === СБОР ТЕЛЕМЕТРИИ ПО ДОКУМЕНТАЦИИ BALLISTIX ===
 local function getSiloData()
-    local data = { status = "OFFLINE", power = 0, maxPower = 0, missile = "None", amount = 0 }
+    local silo = peripheral.find("siloController")
+    local data = { status = "OFFLINE", power = 0, maxPower = 0, missile = "Unknown", amount = 0 }
+    
     if silo then
-        pcall(function()
-            data.power = silo.getPower() or 0
-            data.maxPower = silo.getMaxPower() or 0
-            data.missile = silo.getMissileType() or "None"
-            data.amount = silo.getMissileAmount() or 0
+        -- Пробуем получить данные напрямую
+        local ok, err = pcall(function()
+            data.power = getPower() or 0
+            data.maxPower = getMaxPower() or 0
             
-            if data.power < data.maxPower * 0.1 then data.status = "LOW POWER"
-            elseif data.amount == 0 then data.status = "EMPTY"
-            else data.status = "READY" end
+            -- Сначала пробуем получить ракету, если пусто - взрывчатку
+            local mType = getMissileType()
+            if mType and mType ~= "" then data.missile = mType
+            else data.missile = getExplosiveType() or "Unknown" end
+            
+            local mAmt = getMissileAmount()
+            if mAmt and mAmt > 0 then data.amount = mAmt
+            else data.amount = getExplosiveAmount() or 0 end
+            
+            -- Оцениваем статус
+            if data.maxPower > 0 and data.power < data.maxPower * 0.1 then 
+                data.status = "LOW POWER"
+            elseif data.amount == 0 then 
+                data.status = "EMPTY"
+            else 
+                data.status = "READY" 
+            end
         end)
+        
+        -- Если что-то пошло не так
+        if not ok then
+            data.status = "ERROR"
+            data.missile = string.sub(tostring(err), 1, 25)
+        end
     end
     return data
 end
 
--- === 1. ЦИКЛ ТРАНСЛЯЦИИ СТАТУСА ===
 local function telemetryLoop()
     while true do
         term.clear(); term.setCursorPos(1,1)
@@ -212,7 +228,14 @@ local function telemetryLoop()
         
         if NODE_TYPE == "SILO" or NODE_TYPE == "ABM" then
             payload.telemetry = getSiloData()
-            print("STATUS: " .. payload.telemetry.status)
+            
+            write("STATUS: ")
+            if payload.telemetry.status == "READY" then term.setTextColor(colors.green)
+            elseif payload.telemetry.status == "ERROR" or payload.telemetry.status == "OFFLINE" then term.setTextColor(colors.red)
+            else term.setTextColor(colors.orange) end
+            print(payload.telemetry.status)
+            term.setTextColor(colors.white)
+            
             print("PAYLOAD: " .. payload.telemetry.missile .. " (x" .. payload.telemetry.amount .. ")")
         elseif NODE_TYPE == "RADAR" then
             if isRadarTriggered() then
@@ -220,7 +243,7 @@ local function telemetryLoop()
                 term.setTextColor(colors.red); print("STATUS: THREAT DETECTED")
             else
                 payload.telemetry.status = "SCANNING"
-                print("STATUS: CLEAR")
+                term.setTextColor(colors.white); print("STATUS: CLEAR")
             end
         end
         
@@ -234,18 +257,16 @@ local function telemetryLoop()
     end
 end
 
--- === 2. МГНОВЕННОЕ ОБНАРУЖЕНИЕ (ДЛЯ РАДАРА) ===
 local function radarLoop()
     if NODE_TYPE ~= "RADAR" then
-        while true do sleep(3600) end -- Усыпляем поток, если это шахта
+        while true do sleep(3600) end
     end
     
     local wasAlert = isRadarTriggered()
     while true do
-        os.pullEvent("redstone") -- Ждем изменения редстоун-сигнала
+        os.pullEvent("redstone")
         local isAlert = isRadarTriggered()
         
-        -- Если сигнал загорелся (а до этого его не было)
         if isAlert and not wasAlert then
             sendEncrypted({
                 type = "RADAR_ALERT",
@@ -257,21 +278,33 @@ local function radarLoop()
     end
 end
 
--- === 3. ЦИКЛ ОЖИДАНИЯ ПРИКАЗОВ ===
+-- === АЛГОРИТМ ПУСКА ===
 local function commandLoop()
     while true do
         local id, msg = receiveEncrypted()
         if msg and msg.type == "SILO_FIRE_CMD" and msg.targetNode == NODE_ID then
+            local silo = peripheral.find("siloController")
             if silo and (NODE_TYPE == "SILO" or NODE_TYPE == "ABM") then
-                local tx, ty, tz = msg.x, msg.y, msg.z
+                
+                -- Убеждаемся, что координаты это числа (integer)
+                local tx = math.floor(tonumber(msg.x))
+                local ty = math.floor(tonumber(msg.y))
+                local tz = math.floor(tonumber(msg.z))
+                
                 local ok, err = pcall(function()
-                    silo.launchWithPosition(tx, ty, tz)
+                    -- По твоей документации:
+                    -- Сначала устанавливаем цель через setPosition
+                    setPosition(tx, ty, tz)
+                    sleep(0.5) -- Ждем полсекунды, чтобы контроллер успел обновиться
+                    -- Затем даем команду на пуск
+                    launch()
                 end)
                 
                 if ok then
                     sendEncrypted({ type = "NODE_REPORT", nodeId = NODE_ID, status = "LAUNCH SUCCESS", color = colors.red })
                 else
-                    sendEncrypted({ type = "NODE_REPORT", nodeId = NODE_ID, status = "LAUNCH FAILED", color = colors.orange })
+                    -- Если всё-таки вылезет ошибка (например "цель слишком близко"), она вернется в Центр
+                    sendEncrypted({ type = "NODE_REPORT", nodeId = NODE_ID, status = "LAUNCH FAILED: " .. tostring(err), color = colors.orange })
                 end
             end
         end
