@@ -4,6 +4,15 @@ local auth = {}
 
 local ROOT = "data/users"
 
+-- Хеширование паролей (базовый уровень защиты)
+-- Простая функция хеширования пароля
+local function hashPassword(pwd)
+  if type(pwd) ~= "string" then return pwd end
+  return textutils.serialize(pwd):gsub(".", function(c)
+    return string.char((string.byte(c) * 7) % 256)
+  end)
+end
+
 local ROLE_POWER = {
   soldier = 1,
   commander = 2,
@@ -34,18 +43,24 @@ function auth.save(profile)
   assert(type(profile) == "table", "profile must be a table")
   assert(profile.id, "profile.id is required")
   profile.role = normalizeRole(profile.role)
+  -- Хешируем пароль перед сохранением
+  if profile.password and profile.password ~= "" then
+    profile.password = hashPassword(profile.password)
+  end
   return storage.save(ROOT .. "/" .. tostring(profile.id) .. ".lua", profile)
 end
 
 function auth.login(userId, password, requestedRole)
   local profile = auth.get(userId)
   if not profile then
-    return false, nil, "unknown user"
+    return false, nil, "user not found"
   end
 
-  if profile.password ~= password then
+  -- Сравниваем хеш введенного пароля с хешем в базе
+  if profile.password ~= hashPassword(password) then
     return false, nil, "wrong password"
   end
+
 
   local role = normalizeRole(requestedRole or profile.role)
   if auth.rolePower(profile.role) < auth.rolePower(role) then

@@ -355,7 +355,7 @@ local function netLoop()
                     print("[ALARM] LAUNCH COMMAND SENT TO " .. tostring(msg.targetNode) .. " BY " .. msg.userID)
                 end
             end
-        
+        end
     end
 end
 
@@ -417,7 +417,7 @@ local function adminLoop()
                 -- Сохраняем через новый модуль auth
                 auth.save({
                     id = id,
-                    password = pass,
+                    password = hashPassword(newPassword),
                     squad = sq,
                     rank = rk,
                     name = nm,
