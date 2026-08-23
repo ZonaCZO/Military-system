@@ -3,6 +3,10 @@
 -- ==========================================
 local LOCALE = 'RU'
 
+local KEYCODES = {
+  SHIFT = 340
+}
+
 local function handle_keypress()
   local evt, key
   repeat
@@ -37,8 +41,8 @@ local function cyrrun()
   local shift_pressed = false
   while true do
     local key_pressed = handle_keypress()
-    if key_pressed == 340 then shift_pressed = true end
-    if key_pressed == -340 then shift_pressed = false end
+    if key_pressed == KEYCODES.SHIFT then shift_pressed = true end
+    if key_pressed == -KEYCODES.SHIFT then shift_pressed = false end
     if locale_map[key_pressed] then
       if shift_pressed then os.queueEvent('char', locale_map_shifted[key_pressed])
       else os.queueEvent('char', locale_map[key_pressed]) end
@@ -88,7 +92,15 @@ local archive = require("server.modules.archive")
 local storage = require("server.modules.storage") 
 
 local modem = peripheral.find("modem")
-if not modem then error("No modem found! Please attach a wireless modem.") end
+if not modem then
+    term.clear()
+    term.setCursorPos(1, 1)
+    term.setTextColor(colors.red)
+    print("FATAL ERROR: Wireless modem not found!")
+    print("Please attach a modem to the computer and reboot.")
+    term.setTextColor(colors.white)
+    return -- Мягко завершаем скрипт вместо жесткого краша
+end
 rednet.open(peripheral.getName(modem))
 
 -- === RC4 CRYPTO ===
@@ -417,7 +429,7 @@ local function adminLoop()
                 -- Сохраняем через новый модуль auth
                 auth.save({
                     id = id,
-                    password = hashPassword(newPassword),
+                    password = pass,
                     squad = sq,
                     rank = rk,
                     name = nm,
