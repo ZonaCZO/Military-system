@@ -36,18 +36,37 @@ local PROTOCOL = "default_net"
 local KEY = "none"
 local netFile = ".net_config.txt"
 
+-- Функция для обфускации/хеширования ключа сети
+local function hashNetKey(key)
+    if not key or key == "" or key == "none" then return key end
+    return textutils.serialize(key):gsub(".", function(c)
+        return string.char((string.byte(c) * 7) % 256)
+    end)
+end
+
 if fs.exists(netFile) then
     local f = fs.open(netFile, "r")
-    PROTOCOL = f.readLine(); KEY = f.readLine(); f.close()
+    PROTOCOL = f.readLine()
+    KEY = f.readLine()
+    f.close()
     if not KEY then KEY = "none" end
 else
     term.clear(); term.setCursorPos(1,1)
-    print("--- GENERAL LINK SETUP ---")
+    print("--- NETWORK SETUP ---")
+    
     write("Network ID: "); local input = read()
     if input ~= "" then PROTOCOL = input end
+    
     write("Encryption Key: "); local kInp = read()
-    if kInp ~= "" then KEY = kInp end
-    local f = fs.open(netFile, "w"); f.writeLine(PROTOCOL); f.writeLine(KEY); f.close()
+    if kInp ~= "" then 
+        KEY = hashNetKey(kInp) -- Хешируем введенный пароль!
+    end
+    
+    local f = fs.open(netFile, "w")
+    f.writeLine(PROTOCOL)
+    f.writeLine(KEY) -- В файл записывается уже хеш, а не чистый текст
+    f.close()
+    sleep(1)
 end
 
 local serverID = rednet.lookup(PROTOCOL, "central_core")
