@@ -297,7 +297,6 @@ local function netLoop()
                         sendEncrypted(id, {type="ERROR", reason=err or "Failed to add marker"})
                     end
                 end
-            end
             -- === 9. РАДАР (ТРЕВОГА) ===
             elseif msg.type == "RADAR_ALERT" then
                 archive.appendLog("CMD", {from = "RADAR", text = msg.text})
