@@ -58,6 +58,10 @@ if choice == "1" then
     download("system/icons/burn.nfp", "sys/icon/burn.nfp")
     download("system/icons/deaddrop.nfp", "sys/icon/deaddrop.nfp")
     download("system/icons/pda.nfp", "sys/icon/pda.nfp")
+    download("system/icons/front_browser.nfp", "sys/icon/front_browser.nfp")
+    download("system/icons/plan_browser.nfp", "sys/icon/plan_browser.nfp")
+    download("system/icons/radar.nfp", "sys/icon/radar.nfp")
+    download("system/icons/rocket.nfp", "sys/icon/rocket.nfp")
     
     print("\nInstalling Base System...")
     download("system/system.lua", "system.lua")
