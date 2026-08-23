@@ -2,6 +2,8 @@ local storage = require("server.modules.storage")
 
 local archive = {}
 
+local MAX_LOGS = 50
+
 local ROOT = "data/archive"
 local PLANS = ROOT .. "/plans"
 local LOGS = ROOT .. "/logs"
@@ -108,19 +110,21 @@ function archive.getLog(channel)
   return data
 end
 
-function archive.appendLog(channel, entry)
-  local log = archive.getLog(channel)
-  entry = entry or {}
-  entry.time = entry.time or os.epoch("utc")
-  entry.from = entry.from or "unknown"
-  entry.text = entry.text or ""
-
-  log.messages[#log.messages + 1] = entry
-  while #log.messages > 200 do
-    table.remove(log.messages, 1)
-  end
-
-  return storage.save(logPath(channel), log)
+function archive.appendLog(channel, logEntry)
+    -- Допустим, мы загружаем текущий список логов для канала
+    local logPath = "data/archive/logs/" .. tostring(channel) .. ".lua"
+    local currentLogs = storage.load(logPath, {})
+    
+    -- Добавляем новую запись
+    table.insert(currentLogs, logEntry)
+    
+    -- ОЧИСТКА: Удаляем самые старые записи (индекс 1), пока размер больше лимита
+    while #currentLogs > MAX_LOGS do
+        table.remove(currentLogs, 1)
+    end
+    
+    -- Сохраняем обратно
+    storage.save(logPath, currentLogs)
 end
 
 return archive
