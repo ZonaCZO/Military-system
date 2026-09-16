@@ -8,6 +8,28 @@ local data, selected, message = nil, nil, ''
 local points = {}
 local areaIndex, left, top, zoom = 1, 0, 0, 1
 local fitted = false
+local hitCells = {}
+-- CC has 16 palette entries: reserve custom blended terrain colours.
+local bases={{0.18,0.65,0.22},{0.95,0.82,0.12},{0.80,0.18,0.16}}
+local statusColors={colors.green,colors.yellow,colors.red}
+local waterColors={colors.cyan,colors.blue,colors.purple}
+local mountainColors={colors.lime,colors.orange,colors.pink}
+local mixedColors={colors.lightBlue,colors.brown,colors.magenta}
+local savedPalette={}
+local function blend(a,b,f)
+  return {a[1]*(1-f)+b[1]*f,a[2]*(1-f)+b[2]*f,a[3]*(1-f)+b[3]*f}
+end
+local function palette(color,rgb)
+  savedPalette[color]={screen.getPaletteColor(color)}
+  screen.setPaletteColor(color,table.unpack(rgb))
+end
+for i=1,3 do
+  palette(statusColors[i],bases[i])
+  palette(waterColors[i],blend(bases[i],{0.12,0.35,1},0.45))
+  palette(mountainColors[i],blend(bases[i],{1,1,1},0.45))
+  palette(mixedColors[i],blend(blend(bases[i],{0.12,0.35,1},0.45),{1,1,1},0.35))
+end
+palette(colors.lightGray,{0.55,0.90,0.65}) -- safe-zone mint
 local pointFile = 'front_points.json'
 local cacheFile = 'front_snapshot.json'
 local function loadJSON(path)
@@ -46,7 +68,8 @@ local function fit()
   if not x1 then return end
   local w,h = screen.getSize()
   zoom = math.min(16,math.max(1, math.ceil((x2-x1+1)/w), math.ceil((z2-z1+1)/math.max(1,h-5))))
-  left,top = x1,z1
+  left=x1-math.floor((w*zoom-(x2-x1+1))/2)
+  top=z1-math.floor((math.max(1,h-5)*zoom-(z2-z1+1))/2)
   fitted = true
 end
 local function refresh()
@@ -63,7 +86,7 @@ local function refresh()
   if areaIndex>#data.areas then areaIndex=1; fitted=false end
   saveJSON(cacheFile,data)
   if not fitted then fit() end
-  message='Updated. Water is sampled, ? means unknown.'
+  message='Green: own  Yellow: front  Red: occupied'
 end
 local function control(sx,sz) return tonumber(data.controls[sx..','..sz]) or 0 end
 local function inRect(x,z,r)
@@ -71,30 +94,48 @@ local function inRect(x,z,r)
 end
 local function war(sx,sz)
   local s=data.sector_size
-  for _,r in ipairs(data.areas) do if inRect((sx+.5)*s,(sz+.5)*s,r) then return true end end
+  local r=data.areas[areaIndex]
+  return r and sx*s<=math.max(r.x1,r.x2) and (sx+1)*s>math.min(r.x1,r.x2)
+    and sz*s<=math.max(r.z1,r.z2) and (sz+1)*s>math.min(r.z1,r.z2) or false
+end
+local function safe(sx,sz)
+  if not war(sx,sz) then return false end
+  local s=data.sector_size
+  for _,r in ipairs(data.safe_zones or {}) do
+    if sx*s<=math.max(r.x1,r.x2) and (sx+1)*s>math.min(r.x1,r.x2)
+      and sz*s<=math.max(r.z1,r.z2) and (sz+1)*s>math.min(r.z1,r.z2) then return true end
+  end
   return false
+end
+local function visible(sx,sz)
+  if not war(sx,sz) then return false end
+  local t=data.terrain[sx..','..sz]
+  return not (t and (t.ocean or t.terrain=='ocean'))
+end
+local function status(sx,sz)
+  if safe(sx,sz) then return 1 end
+  local c=control(sx,sz)
+  for _,n in ipairs({{1,0},{-1,0},{0,1},{0,-1}}) do
+    local nx,nz=sx+n[1],sz+n[2]
+    if visible(nx,nz) and ((c>0)~=(control(nx,nz)>0)) then return 2 end
+  end
+  if c>0 then return 3 end
+  return 1
 end
 local function tile(sx,sz)
   local key=sx..','..sz
   local c=control(sx,sz)
   local terrain=data.terrain[key]
-  local symbol=terrain and ({water='~',river='=',mountain='^',forest='*',land='.'})[terrain.terrain] or '?'
-  local bg=war(sx,sz) and colors.green or colors.gray
-  if c>0 then
-    bg=colors.red
-    if control(sx+1,sz)==0 or control(sx-1,sz)==0 or control(sx,sz+1)==0 or control(sx,sz-1)==0 then bg=colors.orange end
-  end
-  local s=data.sector_size
-  -- Safe-zone overlap is indicated even if it only occupies part of a sector.
-  for _,r in ipairs(data.safe_zones or {}) do
-    if sx*s<=math.max(r.x1,r.x2) and (sx+1)*s>math.min(r.x1,r.x2) and
-      sz*s<=math.max(r.z1,r.z2) and (sz+1)*s>math.min(r.z1,r.z2) then bg=colors.cyan; symbol='B' end
-  end
-  if data.garrisons[key] then symbol='G' end
-  for _,o in ipairs(data.origins or {}) do
-    if math.floor(o.x/s)==sx and math.floor(o.z/s)==sz then symbol='O' end
-  end
-  return symbol, terrain and (terrain.water_fraction or 0)>0 and colors.lightBlue or colors.white, bg
+  if not visible(sx,sz) then return ' ',colors.white,colors.black end
+  local state=status(sx,sz)
+  local wet=terrain and (terrain.river or terrain.terrain=='river' or (terrain.water_fraction or 0)>0)
+  local high=terrain and (terrain.mountain or terrain.terrain=='mountain')
+  local bg=statusColors[state]
+  if wet and high then bg=mixedColors[state]
+  elseif wet then bg=waterColors[state]
+  elseif high then bg=mountainColors[state] end
+  if safe(sx,sz) then bg=colors.lightGray end
+  return ' ',colors.white,bg
 end
 local function line(y,text,fg,bg)
   local w=screen.getSize()
@@ -107,25 +148,35 @@ local function draw()
   screen.setBackgroundColor(colors.black); screen.clear()
   line(1,'MILITARY MAP | '..(data and tostring(data.enemy) or 'OFFLINE'),colors.yellow)
   if not data then line(3,message); return end
-  line(2,'Area '..areaIndex..' | '..data.sector_size..' blocks/sector | zoom '..zoom)
+  line(2,'N ^ (-Z)  W < (-X)  E > (+X)  S v (+Z) | Area '..areaIndex)
+  hitCells={}
   for row=1,h-5 do
     local text,fgs,bgs={},{},{}
     for col=1,w do
       local sx,sz=left+(col-1)*zoom,top+(row-1)*zoom
-      local char,fg,bg=tile(sx,sz)
-      local bestControl=control(sx,sz)
-      -- Zoomed cells show the highest-control sample rather than hiding a front.
+      local char,fg,bg=' ',colors.white,colors.black
+      local bestScore=-1
+      local chosen=nil
+      -- Only eligible war cells participate. Front takes priority at low detail.
       for dx=0,zoom-1 do for dz=0,zoom-1 do
-        if control(sx+dx,sz+dz)>bestControl then
-          bestControl=control(sx+dx,sz+dz)
-          char,fg,bg=tile(sx+dx,sz+dz)
+        local nx,nz=sx+dx,sz+dz
+        if visible(nx,nz) then
+          local state=status(nx,nz)
+          local score=state==2 and 3 or (state==3 and 2 or 1)
+          if score>bestScore then
+            bestScore=score; chosen={sx=nx,sz=nz}; char,fg,bg=tile(nx,nz)
+          end
         end
       end end
       for _,p in ipairs(points) do
         local psx,psz=math.floor(p.x/data.sector_size),math.floor(p.z/data.sector_size)
-        if psx>=sx and psx<sx+zoom and psz>=sz and psz<sz+zoom then char=p.kind or 'M'; fg=colors.yellow end
+        if visible(psx,psz) and psx>=sx and psx<sx+zoom and psz>=sz and psz<sz+zoom then
+          char=tostring(p.symbol or p.kind or 'M'):sub(1,1); fg=colors.white
+          chosen={sx=psx,sz=psz}
+        end
       end
-      if selected and selected.sx>=sx and selected.sx<sx+zoom and selected.sz>=sz and selected.sz<sz+zoom then fg=colors.black; bg=colors.white end
+      if chosen then hitCells[col..','..(row+2)]=chosen end
+      if chosen and selected and selected.sx>=sx and selected.sx<sx+zoom and selected.sz>=sz and selected.sz<sz+zoom and char==' ' then char='+' end
       text[col]=char; fgs[col]=colors.toBlit(fg); bgs[col]=colors.toBlit(bg)
     end
     screen.setCursorPos(1,row+2); screen.blit(table.concat(text),table.concat(fgs),table.concat(bgs))
@@ -135,12 +186,12 @@ local function draw()
     local terrain=data.terrain[key]
     local s=data.sector_size
     line(h-2,'Sector '..key..' X/Z '..math.floor((selected.sx+.5)*s)..' '..math.floor((selected.sz+.5)*s)..' C:'..control(selected.sx,selected.sz)..'%')
-    line(h-1,terrain and (terrain.terrain..' water '..math.floor(terrain.water_fraction*100)..'% probes '..terrain.known..'/5') or 'Unknown terrain: explore these chunks first.')
+    line(h-1,(safe(selected.sx,selected.sz) and 'SAFE overlap | ' or '')..(terrain and (terrain.terrain..' water '..math.floor(terrain.water_fraction*100)..'% probes '..terrain.known..'/5') or 'Terrain not surveyed'))
     for _,p in ipairs(points) do
       if math.floor(p.x/s)==selected.sx and math.floor(p.z/s)==selected.sz then line(h-1,(p.kind or 'N')..': '..tostring(p.label or 'Point'),colors.yellow) end
     end
   else
-    line(h-2,'~ water  = river  ^ mountains  * forest  G troops  O origin')
+    line(h-2,'Green own | Yellow front | Red occupied | zoom '..zoom)
     line(h-1,message)
   end
   line(h,'Arrows pan +/- zoom Tab area R refresh A point D delete Q exit',colors.lightGray)
@@ -152,10 +203,10 @@ local function addPoint()
   term.redirect(original); term.setBackgroundColor(colors.black); term.setTextColor(colors.white); term.clear(); term.setCursorPos(1,1)
   print('Point name (ASCII recommended):'); local name=read()
   if name=='' then return end
-  print('Type: B base, T target, R route, N note'); local kind=read():upper():sub(1,1)
-  if not ({B=true,T=true,R=true,N=true})[kind] then kind='N' end
+  print('Symbol: one Latin letter or digit (A-Z / 0-9)'); local kind=read():upper()
+  if not kind:match('^[A-Z0-9]$') then message='Invalid symbol: use one letter or digit'; return end
   local s=data.sector_size
-  points[#points+1]={id=tostring(os.epoch('utc')),label=name:sub(1,48),kind=kind,x=math.floor((selected.sx+.5)*s),z=math.floor((selected.sz+.5)*s)}
+  points[#points+1]={id=tostring(os.epoch('utc')),label=name:sub(1,48),kind=kind,symbol=kind,x=math.floor((selected.sx+.5)*s),z=math.floor((selected.sz+.5)*s)}
   saveJSON(pointFile,points)
 end
 local function deletePoint()
@@ -175,7 +226,7 @@ local function run()
     elseif e=='term_resize' or e=='monitor_resize' then fit()
     elseif (e=='mouse_click' and screen==original) or (e=='monitor_touch' and screen~=original and a==peripheral.getName(screen)) then
       local w,h=screen.getSize()
-      if b and c and b>=1 and b<=w and c>=3 and c<=h-3 then selected={sx=left+(b-1)*zoom,sz=top+(c-3)*zoom} end
+      if b and c then selected=hitCells[b..','..c] end
     elseif e=='key' then
       if a==keys.left then left=left-zoom elseif a==keys.right then left=left+zoom
       elseif a==keys.up then top=top-zoom elseif a==keys.down then top=top+zoom
@@ -188,5 +239,6 @@ local function run()
   end
 end
 local ok,err=pcall(run)
+for color,rgb in pairs(savedPalette) do screen.setPaletteColor(color,table.unpack(rgb)) end
 term.redirect(original); term.setBackgroundColor(colors.black); term.setTextColor(colors.white); term.clear(); term.setCursorPos(1,1)
 if not ok then print(err) end
