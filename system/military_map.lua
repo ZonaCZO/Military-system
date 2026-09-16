@@ -192,7 +192,11 @@ local function draw()
     local key=selected.sx..','..selected.sz
     local terrain=data.terrain[key]
     local s=data.sector_size
-    line(h-2,'Sector '..key..' X/Z '..math.floor((selected.sx+.5)*s)..' '..math.floor((selected.sz+.5)*s)..' C:'..control(selected.sx,selected.sz)..'%')
+    local major=data.major_sector_size or s
+    local n=major/s
+    local mx,mz=math.floor(selected.sx/n),math.floor(selected.sz/n)
+    local sub=string.char(65+selected.sx-mx*n)..(1+selected.sz-mz*n)
+    line(h-2,'Sector '..mx..','..mz..' / '..sub..' ('..s..'b) C:'..control(selected.sx,selected.sz)..'% X/Z '..math.floor((selected.sx+.5)*s)..' '..math.floor((selected.sz+.5)*s))
     line(h-1,(safe(selected.sx,selected.sz) and 'SAFE overlap | ' or '')..(terrain and (terrain.terrain..' water '..math.floor(terrain.water_fraction*100)..'% probes '..terrain.known..'/5') or 'Terrain not surveyed'))
     for _,p in ipairs(points) do
       if math.floor(p.x/s)==selected.sx and math.floor(p.z/s)==selected.sz then line(h-1,(p.kind or 'N')..': '..tostring(p.label or 'Point'),colors.yellow) end
