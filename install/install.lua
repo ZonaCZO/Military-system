@@ -13,14 +13,18 @@ local choice = read()
 print('Programs will be replaced. Network settings and saved data are preserved.')
 
 local function backupProgram(path)
-    if not fs.exists(path) then return end
-    local backup = path .. '.msos-backup'
-    local index = 1
-    while fs.exists(backup) do
-        backup = path .. '.msos-backup-' .. index
-        index = index + 1
+    if fs.exists(path) then
+        if fs.isDir(path) then error('Expected program file: ' .. path) end
+        fs.delete(path)
     end
-    fs.move(path, backup)
+    local dir = fs.getDir(path)
+    local base = fs.getName(path) .. '.msos-backup'
+    if not fs.exists(dir) then return end
+    for _,name in ipairs(fs.list(dir)) do
+        local numbered = name:sub(1,#base+1)==base..'-' and name:sub(#base+2):match('^%d+$')
+        local candidate = fs.combine(dir,name)
+        if (name==base or numbered) and not fs.isDir(candidate) then fs.delete(candidate) end
+    end
 end
 
 -- === SAFE DOWNLOAD ===
