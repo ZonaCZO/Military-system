@@ -3,11 +3,16 @@ local BASE='https://raw.githubusercontent.com/ZonaCZO/Military-system/main/'
 local files={{'patch/tracker.lua','tracker.lua'},{'patch/rebel.lua','Soldier.lua'},
   {'patch/PDAOS.lua','PDAOS.lua'},{'system/cyrillic_driver.lua','system/cyrillic_driver.lua'}}
 local function install(root)
+  local function backupProgram(path)
+    if not fs.exists(path) then return end
+    local backup=path..'.msos-backup'
+    local index=1
+    while fs.exists(backup) do backup=path..'.msos-backup-'..index; index=index+1 end
+    fs.move(path,backup)
+  end
   local startup=fs.combine(root,'startup.lua')
-  if fs.exists(startup..'.msos-backup') then error('Move existing startup backup before updating') end
   for _,entry in ipairs(files) do
     local path=fs.combine(root,entry[2])
-    if fs.exists(path..'.msos-backup') then error('Move existing backup: '..path) end
     local staging=path..'.msos-new'
     fs.makeDir(fs.getDir(path))
     if fs.exists(staging) then fs.delete(staging) end
@@ -17,10 +22,10 @@ local function install(root)
   end
   for _,entry in ipairs(files) do
     local path=fs.combine(root,entry[2])
-    if fs.exists(path) then fs.move(path,path..'.msos-backup') end
+    backupProgram(path)
     fs.move(path..'.msos-new',path)
   end
-  if fs.exists(startup) then fs.move(startup,startup..'.msos-backup') end
+  if fs.exists(startup) then print('Existing startup.lua preserved.'); return end
   local f=assert(fs.open(startup,'w'))
   f.writeLine('parallel.waitForAny(function() shell.run("tracker.lua") end, function() shell.run("PDAOS.lua") end)')
   f.close()
