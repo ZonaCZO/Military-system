@@ -25,6 +25,48 @@ var fdTerrainCache = {}
 var fdSupplyCache = {}
 var fdOps = { liberated: {}, protection: {}, garrisons: {}, alerts: {} }
 var fdOpsDirty = false
+var fdMapConfigWarning = ''
+
+// Called by the map bridge every 20 seconds, not on every game tick.
+function fdRefreshMapConfig(server) {
+  if (!fdInitialized) return
+  try {
+    var next = JsonIO.read(FD_CONFIG)
+    if (!next) throw new Error('Config missing or invalid JSON')
+    if (Number(next.sectorSize)!==Number(fdConfig.sectorSize))
+      throw new Error('sectorSize changed: live reload refused to preserve sector ownership; use a planned war reset')
+    var lists=['warAreas','safeZones','origins']
+    for(var l=0;l<lists.length;l++) {
+      var list=next[lists[l]]
+      if(list==null || typeof list.length==='undefined') throw new Error('Invalid '+lists[l])
+      for(var i=0;i<list.length;i++) {
+        var fields=lists[l]==='origins'?['x','z']:['x1','z1','x2','z2']
+        for(var f=0;f<fields.length;f++) {
+          if(list[i][fields[f]]==null || !isFinite(Number(list[i][fields[f]]))) throw new Error('Invalid coordinate in '+lists[l])
+        }
+      }
+    }
+    var changed=JSON.stringify([next.warAreas,next.safeZones,next.origins])!==
+      JSON.stringify([fdConfig.warAreas,fdConfig.safeZones,fdConfig.origins])
+    if(changed) {
+      fdConfig.warAreas=next.warAreas
+      fdConfig.safeZones=next.safeZones
+      fdConfig.origins=next.origins
+      fdTerrainCache={}; fdCityCache={}; fdSupplyCache={}
+      for(var o=0;o<fdConfig.origins.length;o++) {
+        var origin=fdConfig.origins[o],sx=fdSX(origin.x),sz=fdSZ(origin.z)
+        if(fdAllowedSector(sx,sz) && fdState[fdKey(sx,sz)]==null) fdSetControl(sx,sz,100)
+      }
+      fdRebuildSupply()
+      console.info('[Front Map] War areas, safe zones and origins reloaded; existing sector state preserved')
+    }
+    fdMapConfigWarning=''
+  } catch(error) {
+    var warning=String(error)
+    if(warning!==fdMapConfigWarning) console.error('[Front Map] Keeping previous config: '+warning)
+    fdMapConfigWarning=warning
+  }
+}
 
 var FD_AI_INTERVAL = 80 // 4 seconds; low-CPU combat network
 var FD_ENTITY_SCAN_INTERVAL = 400 // full world scan only every 20 seconds
@@ -712,6 +754,7 @@ function fdEnemyName(server) {
 // Read-only bridge for the CC tactical map. No war-management authority is exposed.
 global.frontMapBuild = function(server) {
   if (!fdInitialized && !fdInitialize(server)) return null
+  fdRefreshMapConfig(server)
   function rectangles(source) {
     var result = []
     for (var i=0;i<source.length;i++) result.push({name:String(source[i].name || ''),
