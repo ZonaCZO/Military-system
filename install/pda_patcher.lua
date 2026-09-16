@@ -4,11 +4,17 @@ local files={{'patch/tracker.lua','tracker.lua'},{'patch/rebel.lua','Soldier.lua
   {'patch/PDAOS.lua','PDAOS.lua'},{'system/cyrillic_driver.lua','system/cyrillic_driver.lua'}}
 local function install(root)
   local function backupProgram(path)
-    if not fs.exists(path) then return end
-    local backup=path..'.msos-backup'
-    local index=1
-    while fs.exists(backup) do backup=path..'.msos-backup-'..index; index=index+1 end
-    fs.move(path,backup)
+    if fs.exists(path) then
+      if fs.isDir(path) then error('Expected program file: '..path) end
+      fs.delete(path)
+    end
+    local dir=fs.getDir(path)
+    local base=fs.getName(path)..'.msos-backup'
+    for _,name in ipairs(fs.list(dir)) do
+      local numbered=name:sub(1,#base+1)==base..'-' and name:sub(#base+2):match('^%d+$')
+      local candidate=fs.combine(dir,name)
+      if (name==base or numbered) and not fs.isDir(candidate) then fs.delete(candidate) end
+    end
   end
   local startup=fs.combine(root,'startup.lua')
   for _,entry in ipairs(files) do
