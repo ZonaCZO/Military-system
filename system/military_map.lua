@@ -31,8 +31,6 @@ for i=1,3 do
   palette(mixedColors[i],blend(blend(bases[i],{0.12,0.35,1},0.45),{1,1,1},0.35))
 end
 palette(colors.lightGray,{0.55,0.90,0.65}) -- safe-zone mint
-local pointFile = 'front_points.json'
-local cacheFile = 'front_snapshot.json'
 local function loadJSON(path)
   if not fs.exists(path) then return nil end
   local f = fs.open(path, 'r')
@@ -45,8 +43,6 @@ local function saveJSON(path, value)
   local f = assert(fs.open(path, 'w'), 'Cannot write '..path)
   f.write(textutils.serialiseJSON(value)); f.close()
 end
-points = loadJSON(pointFile) or {}
-data = loadJSON(cacheFile)
 local function validSnapshot(value)
   return type(value)=='table' and value.version==1 and type(value.areas)=='table'
     and type(value.sector_size)=='number' and value.sector_size>0
@@ -73,10 +69,41 @@ local function fit()
   top=z1-math.floor((math.max(1,h-5)*zoom-(z2-z1+1))/2)
   fitted = true
 end
+local host=nil
+local protocol='military_front_map_v9'
+local sequence=0
+local function rpc(payload)
+  sequence=sequence+1
+  payload.request=tostring(os.epoch('utc'))..'_'..sequence
+  rednet.send(host,payload,protocol)
+  local deadline=os.epoch('utc')+5000
+  while os.epoch('utc')<deadline do
+    local sender,response=rednet.receive(protocol,math.max(0,(deadline-os.epoch('utc'))/1000))
+    if sender==host and type(response)=='table' and response.request==payload.request then return response end
+  end
+  return {ok=false,error='Map server did not answer'}
+end
+local function connect()
+  local opened=false
+  for _,name in ipairs(peripheral.getNames()) do
+    if peripheral.hasType(name,'modem') and not peripheral.call(name,'isWireless') then rednet.open(name);opened=true end
+  end
+  assert(opened,'Attach a wired modem connected to the map server')
+  term.redirect(original);term.setBackgroundColor(colors.black);term.setTextColor(colors.white);term.clear();term.setCursorPos(1,1)
+  local connection=loadJSON('front_map_connection.json') or {}
+  host=tonumber(connection.host)
+  if not host then print('Map server computer ID:');host=tonumber(read());assert(host,'Invalid server ID');saveJSON('front_map_connection.json',{host=host}) end
+  print('Military-system user ID:');local user=read()
+  print('Password:');local password=read('*')
+  local result=rpc({action='login',user=user,password=password});password=nil
+  assert(result.ok,result.error or 'Login failed')
+  -- No client-owned map/point database. Only the live session is held in RAM.
+  data=nil;points={};fitted=false
+end
 local function refresh()
-  local port = peripheral.find('front_map')
-  if not port then message = 'OFFLINE: connect a lectern (front_map)'; return end
-  local ok, raw = pcall(port.getMapJSON)
+  local response=rpc({action='read'})
+  if not response.ok then message='OFFLINE: '..tostring(response.error);return end
+  local ok, raw = true, response.map
   if not ok or type(raw)~='string' or raw=='' then message = 'Waiting for KubeJS snapshot'; return end
   local parsedOK, snapshot = pcall(textutils.unserialiseJSON, raw)
   if not parsedOK or not validSnapshot(snapshot) then
@@ -87,12 +114,14 @@ local function refresh()
   local changed=configSignature~=nil and signature~=configSignature
   configSignature=signature
   data=snapshot
+  data.stale=response.stale or false
+  points=response.points or {}
   data.controls=data.controls or {}; data.terrain=data.terrain or {}; data.garrisons=data.garrisons or {}
   if areaIndex>#data.areas then areaIndex=1; fitted=false end
   if changed then fitted=false; selected=nil end
-  saveJSON(cacheFile,data)
   if not fitted then fit() end
   message='Green: own  Yellow: front  Red: occupied'
+  if data.stale then message='STALE: saved server map, live KubeJS link unavailable' end
   if changed then message='Configuration changed: map resized. Points preserved.' end
 end
 local function control(sx,sz) return tonumber(data.controls[sx..','..sz]) or 0 end
@@ -153,9 +182,9 @@ local function draw()
   local w,h=screen.getSize()
   if w<20 or h<9 then line(1,'Screen too small'); return end
   screen.setBackgroundColor(colors.black); screen.clear()
-  line(1,'MILITARY MAP | '..(data and tostring(data.enemy) or 'OFFLINE'),colors.yellow)
+  line(1,(data and data.stale and 'STALE MAP | ' or 'MILITARY MAP | ')..(data and tostring(data.enemy) or 'OFFLINE'),colors.yellow)
   if not data then line(3,message); return end
-  line(2,'N ^ (-Z)  W < (-X)  E > (+X)  S v (+Z) | Area '..areaIndex)
+  line(2,'N ^ (-Z) W < (-X) E > (+X) S v (+Z) | Area '..areaIndex)
   hitCells={}
   for row=1,h-5 do
     local text,fgs,bgs={},{},{}
@@ -193,10 +222,8 @@ local function draw()
     local terrain=data.terrain[key]
     local s=data.sector_size
     local major=data.major_sector_size or s
-    local n=major/s
-    local mx,mz=math.floor(selected.sx/n),math.floor(selected.sz/n)
-    local sub=string.char(65+selected.sx-mx*n)..(1+selected.sz-mz*n)
-    line(h-2,'Sector '..mx..','..mz..' / '..sub..' ('..s..'b) C:'..control(selected.sx,selected.sz)..'% X/Z '..math.floor((selected.sx+.5)*s)..' '..math.floor((selected.sz+.5)*s))
+    local parent=math.floor(selected.sx*s/major)..','..math.floor(selected.sz*s/major)
+    line(h-2,'Zone '..key..' Sector '..parent..' C:'..control(selected.sx,selected.sz)..'%')
     line(h-1,(safe(selected.sx,selected.sz) and 'SAFE overlap | ' or '')..(terrain and (terrain.terrain..' water '..math.floor(terrain.water_fraction*100)..'% probes '..terrain.known..'/5') or 'Terrain not surveyed'))
     for _,p in ipairs(points) do
       if math.floor(p.x/s)==selected.sx and math.floor(p.z/s)==selected.sz then line(h-1,(p.kind or 'N')..': '..tostring(p.label or 'Point'),colors.yellow) end
@@ -217,17 +244,21 @@ local function addPoint()
   print('Symbol: one Latin letter or digit (A-Z / 0-9)'); local kind=read():upper()
   if not kind:match('^[A-Z0-9]$') then message='Invalid symbol: use one letter or digit'; return end
   local s=data.sector_size
-  points[#points+1]={id=tostring(os.epoch('utc')),label=name:sub(1,48),kind=kind,symbol=kind,x=math.floor((selected.sx+.5)*s),z=math.floor((selected.sz+.5)*s)}
-  saveJSON(pointFile,points)
+  local result=rpc({action='add',label=name:sub(1,48),kind=kind,x=math.floor((selected.sx+.5)*s),z=math.floor((selected.sz+.5)*s)})
+  if not result.ok then message=tostring(result.error or 'Point rejected') else refresh() end
 end
 local function deletePoint()
   if not selected or not data then return end
   for i=#points,1,-1 do
-    if math.floor(points[i].x/data.sector_size)==selected.sx and math.floor(points[i].z/data.sector_size)==selected.sz then table.remove(points,i) end
+    if math.floor(points[i].x/data.sector_size)==selected.sx and math.floor(points[i].z/data.sector_size)==selected.sz then
+      local result=rpc({action='delete',id=points[i].id})
+      if not result.ok then message=tostring(result.error or 'Delete rejected');return end
+    end
   end
-  saveJSON(pointFile,points)
+  refresh()
 end
 local function run()
+  connect()
   refresh(); if data and not fitted then fit() end
   local timer=os.startTimer(20)
   while true do

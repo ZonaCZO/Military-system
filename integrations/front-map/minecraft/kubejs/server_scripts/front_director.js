@@ -134,8 +134,9 @@ function fdGameTime(server) {
 }
 
 function fdOpsLoad(server) {
+  var migrated = false
   try {
-    var migrated=server.persistentData.contains(fdOpsStorage())
+    migrated=server.persistentData.contains(fdOpsStorage())
     fdOps = server.persistentData.contains(migrated?fdOpsStorage():'front_director_v6_ops')
       ? JSON.parse(String(server.persistentData.getString(migrated?fdOpsStorage():'front_director_v6_ops')))
       : { liberated: {}, protection: {}, garrisons: {}, alerts: {} }
@@ -261,7 +262,7 @@ function fdSectorTerrain(level, sx, sz) {
   // Unknown/unloaded terrain never forces chunk generation on the server thread.
   var result = { name: 'обычная местность', factor: 1.0 }
   if (known >= 3 && oceans / known >= 0.6) result = { name: 'океан', factor: 0, ocean: true }
-  else if (rivers > 0) result = { name: 'река', factor: fdOptionNumber('riverExpansionFactor', 0.20) }
+  else if (rivers > 0) result = { name: 'река', factor: Math.min(0.05,fdOptionNumber('riverExpansionFactor', 0.05)) }
   else if (peaks > 0) result = { name: 'горы', factor: fdOptionNumber('peakExpansionFactor', 0.35) }
   if (known === points.length) fdTerrainCache[key] = result
   return result
@@ -289,8 +290,9 @@ function fdSave(server) {
 }
 
 function fdLoadState(server) {
+  var migrated = false
   try {
-    var migrated=server.persistentData.contains(fdStateStorage())
+    migrated=server.persistentData.contains(fdStateStorage())
     fdState = server.persistentData.contains(migrated?fdStateStorage():'front_director_v3_state')
       ? JSON.parse(String(server.persistentData.getString(migrated?fdStateStorage():'front_director_v3_state')))
       : {}
@@ -381,7 +383,7 @@ function fdApplyIsolation(server) {
 
 function fdStrategicExpansion(server) {
   var level = fdWorld(server)
-  fdApplyIsolation(server)
+  var nearby = fdActiveSectors(server, level)
   var candidates = []
   var seen = {}
   var dirs = [[1,0],[-1,0],[0,1],[0,-1]]
@@ -396,6 +398,7 @@ function fdStrategicExpansion(server) {
       var nx = sx + dirs[d][0]
       var nz = sz + dirs[d][1]
       var nk = fdKey(nx, nz)
+      if (!nearby[nk]) continue
       if (seen[nk] || !fdAllowedSector(nx, nz) || fdControl(nx, nz) >= 100) continue
       if (Number(fdOps.protection[nk] || 0) > fdGameTime(server)) continue
       seen[nk] = true
@@ -410,6 +413,8 @@ function fdStrategicExpansion(server) {
   for (var i = 0; i < limit; i++) {
     var terrain = fdSectorTerrain(level, candidates[i].sx, candidates[i].sz)
     if (terrain.ocean) continue
+    // River crossings are rare attempts rather than a rounded minimum gain.
+    if (terrain.name === 'река' && Math.random() >= terrain.factor) continue
     var strategicGain = Math.max(1, Math.round(Number(fdConfig.expansionControlGain) *
       fdStrength(candidates[i].sx, candidates[i].sz) * terrain.factor))
     var candidateKey = fdKey(candidates[i].sx, candidates[i].sz)
@@ -420,8 +425,11 @@ function fdStrategicExpansion(server) {
       fdOpsDirty = true
       if (strategicGain <= 0) continue
     }
+    if (fwMissionEffect(server,candidateKey,'headquarters') || fwMissionEffect(server,candidateKey,'depot')) continue
+    var oldControl=fdControl(candidates[i].sx,candidates[i].sz)
     fdSetControl(candidates[i].sx, candidates[i].sz,
       fdControl(candidates[i].sx, candidates[i].sz) + strategicGain)
+    if(oldControl===0 && fdControl(candidates[i].sx,candidates[i].sz)>0) fwMail(server,candidateKey,'advance')
   }
   fdSave(server)
   fdOpsSave(server)
@@ -457,7 +465,7 @@ function fdLiberateSector(server, sx, sz, liberator) {
   fdOps.alerts[key] = 0
   fdOpsDirty = true
   if (liberator != null) fdScoreAdd(server, liberator, 'front_sectors', 1)
-  fdTell(server, `Сектор ${sx},${sz} освобождён (${who}). Остатки сил ${fdEnemyName(server)} уничтожены.`, 'green')
+  fwMail(server,key,'liberated')
 }
 
 function fdDefenderCount(server, sx, sz) {
@@ -551,16 +559,20 @@ function fdAdvanceDestination(level, robot) {
 
 function fdCombatNetwork(server) {
   var level = fdWorld(server)
+  var nearby=fdActiveSectors(server,level)
   if (fdCombatTick - fdEntityScanTick >= FD_ENTITY_SCAN_INTERVAL) {
     fdTrackedRobots = []
     fdTrackedSem = []
     var iterator = level.getAllEntities().iterator()
+    fwScanBegin()
     while (iterator.hasNext()) {
       var scannedEntity = iterator.next()
       if (!scannedEntity.isAlive()) continue
+      fwScanEntity(scannedEntity)
       if (fdIsRobot(scannedEntity) && scannedEntity.getTags().contains('fd_robot')) fdTrackedRobots.push(scannedEntity)
       else if (fdEntityId(scannedEntity).indexOf('simpleenemymod:') === 0) fdTrackedSem.push(scannedEntity)
     }
+    fwScanEnd(server)
     fdEntityScanTick = fdCombatTick
     if (fdCombatCursor >= fdTrackedRobots.length) fdCombatCursor = 0
   }
@@ -576,6 +588,8 @@ function fdCombatNetwork(server) {
   for (var r = 0; r < batch; r++) {
     var robot = robots[(fdCombatCursor + r) % robots.length]
     if (!robot || !robot.isAlive()) continue
+    if(!nearby[fdKey(fdSX(robot.x),fdSZ(robot.z))])continue
+    fwRiverSlow(robot,level)
     var acquiredTarget = null
     try { acquiredTarget = robot.getTarget() } catch (ignored) {}
     if (acquiredTarget != null && acquiredTarget.isAlive() && fdIsDefenderEntity(acquiredTarget)) {
@@ -606,6 +620,7 @@ function fdCombatNetwork(server) {
   for (var a = 0; a < batch; a++) {
     var movingRobot = robots[(fdCombatCursor + a) % robots.length]
     if (!movingRobot || !movingRobot.isAlive()) continue
+    if(!nearby[fdKey(fdSX(movingRobot.x),fdSZ(movingRobot.z))])continue
     var currentTarget = null
     try { currentTarget = movingRobot.getTarget() } catch (ignored) {}
     if (currentTarget != null && currentTarget.isAlive()) continue
@@ -684,9 +699,10 @@ function fdIsCitySector(level, sx, sz) {
 }
 
 function fdSpawnRobot(server, level, sx, sz, anchor, forcedType) {
+  if(forcedType==='crusty_chunks:mortarer' && fwMissionEffect(server,fdKey(sx,sz),'mortar')) forcedType=fdInfantryType()
   if (fdSectorTerrain(level, sx, sz).ocean) return false
-  var size = fdZoneSize()
-  var margin = 20
+    var size = fdZoneSize()
+    var margin = Math.min(20,Math.max(1,Math.floor(size/4)))
   for (var attempt = 0; attempt < Number(fdConfig.surfaceAttempts); attempt++) {
     var x
     var z
@@ -951,6 +967,9 @@ function fdHqPayload(server, player) {
     (fdInSafeZone(player.x, player.z) ? 'Безопасная зона' :
       (fdIsFrontier(sx, sz) ? 'Линия фронта' : (control > 0 ? 'Территория Warium' : 'Свободный сектор')))
   return {
+    role: String(player.persistentData.getString('front_rp_role') || ''),
+    callsign: String(player.persistentData.getString('front_rp_callsign') || ''),
+    flag: String(player.persistentData.getString('front_rp_flag') || ''),
     enemyName: fdEnemyName(server), language: String(player.persistentData.getString('front_language') || 'ru'),
     canEdit: player.hasPermissions(2),
     zoneCode: !fdInWarArea(player.x, player.z) ? 'outside' : (fdInSafeZone(player.x, player.z) ? 'safe' : (fdIsFrontier(sx, sz) ? 'front' : (control > 0 ? 'enemy' : 'free'))),
@@ -1126,6 +1145,9 @@ function fdResetWar(context) {
     fdSetControl(fdSX(fdConfig.origins[i].x), fdSZ(fdConfig.origins[i].z), 100)
   }
   fdOps = { liberated: {}, protection: {}, garrisons: {}, alerts: {} }
+  fwLoad(server)
+  fwData={mail:[],defence:{},missions:{},effects:{},cooldowns:{}}
+  fwSave(server)
   fdOpsDirty = true
   fdTrackedRobots = []
   fdTrackedSem = []
@@ -1296,6 +1318,7 @@ ServerEvents.tick(event => {
 })
 
 EntityEvents.death(event => {
+  if(fdInitialized) fwEntityDeath(event)
   if (!fdConfig || !fdConfig.enabled || !fdIsRobot(event.entity)) return
   var entity = event.entity
   var sx = fdSX(entity.x)
@@ -1333,4 +1356,147 @@ EntityEvents.spawned(event => {
     return
   }
   fdTrackedRobots.push(entity)
+})
+// Front v9 services. No chunk loading, no allied entity respawning.
+var fwData=null, fwScan={}, fwStoreKey=''
+var FW_Effect=Java.loadClass('net.minecraft.world.effect.MobEffectInstance')
+var FW_Effects=Java.loadClass('net.minecraft.world.effect.MobEffects')
+function fwRiverSlow(robot,level) {
+  if(fdIsAircraftType(fdEntityId(robot)))return
+  try {
+    if(robot.isInWater() && fdBiomeIdAtLoaded(level,Math.floor(robot.x),Math.floor(robot.z)).indexOf('river')>=0)
+      robot.addEffect(new FW_Effect(FW_Effects.MOVEMENT_SLOWDOWN,FD_AI_INTERVAL+40,2,false,false))
+  } catch(ignored){}
+}
+function fwLoad(server) {
+  var storage='front_services_v9_'+fdZoneSize()
+  if(fwData && fwStoreKey===storage) return
+  fwStoreKey=storage
+  try { fwData=JSON.parse(String(server.persistentData.getString(storage)) || '{}') } catch(ignored) { fwData={} }
+  if(!fwData.mail)fwData.mail=[]
+  if(!fwData.defence)fwData.defence={}
+  if(!fwData.missions)fwData.missions={}
+  if(!fwData.effects)fwData.effects={}
+  if(!fwData.cooldowns)fwData.cooldowns={}
+}
+function fwSave(server) { server.persistentData.putString(fwStoreKey,JSON.stringify(fwData)) }
+function fwMail(server,zone,kind) {
+  fwLoad(server)
+  var now=fdGameTime(server)
+  for(var i=fwData.mail.length-1;i>=0;i--) {
+    var m=fwData.mail[i]
+    if(m.zone===zone && m.kind===kind && now-m.tick<1200) {m.count++;fwSave(server);return}
+  }
+  fwData.mail.push({id:String(now)+'_'+fwData.mail.length,zone:zone,kind:kind,tick:now,count:1})
+  while(fwData.mail.length>100)fwData.mail.shift()
+  fwSave(server)
+}
+function fwScanBegin() { fwScan={} }
+function fwScanEntity(entity) {
+  var id=fdEntityId(entity), soldier=false, vehicle=false
+  for(var i=0;i<fdConfig.alliedEntities.length;i++)if(id===String(fdConfig.alliedEntities[i]))soldier=true
+  // SBW vehicles are NOT assumed friendly. Owner/crew must be identified manually by a tag.
+  try {vehicle=id.indexOf('superbwarfare:')===0 && entity.getTags().contains('front_friendly_vehicle')}catch(ignored){}
+  if(!soldier && !vehicle)return
+  var zone=fdKey(fdSX(entity.x),fdSZ(entity.z))
+  if(!fwScan[zone])fwScan[zone]={soldiers:0,vehicles:0}
+  if(soldier)fwScan[zone].soldiers++
+  if(vehicle)fwScan[zone].vehicles++
+}
+function fwScanEnd(server) {
+  fwLoad(server)
+  var active=fdActiveSectors(server,fdWorld(server)), now=fdGameTime(server)
+  Object.keys(active).forEach(key=>{
+    var p=active[key],size=fdZoneSize(), level=fdWorld(server)
+    // Do not replace a remembered garrison with a partial loaded-entity census.
+    var complete=true
+    for(var cx=Math.floor(p.sx*size/16);cx<=Math.floor(((p.sx+1)*size-1)/16);cx++)
+      for(var cz=Math.floor(p.sz*size/16);cz<=Math.floor(((p.sz+1)*size-1)/16);cz++)
+        if(!level.getChunkSource().hasChunk(cx,cz))complete=false
+    if(!complete)return
+    var result=fwScan[key] || {soldiers:0,vehicles:0}
+    result.tick=now
+    result.strength=result.soldiers+result.vehicles*4
+    result.sufficient=result.strength>=fdOptionNumber('rememberedDefenceMinimum',5)
+    fwData.defence[key]=result
+  })
+  // Keep persistent census bounded. It is information, never an extra army.
+  var keys=Object.keys(fwData.defence)
+  if(keys.length>4096) {
+    keys.sort((a,b)=>fwData.defence[a].tick-fwData.defence[b].tick)
+    for(var i=0;i<keys.length-4096;i++)delete fwData.defence[keys[i]]
+  }
+  fwSave(server)
+}
+function fwMissionEffect(server,zone,kind) {
+  fwLoad(server)
+  return Number(fwData.effects[zone+':'+kind] || 0)>fdGameTime(server)
+}
+function fwCleanText(value,max) {return String(value || '').replace(/[\x00-\x1F\x7F§]/g,'').trim().slice(0,max)}
+function fwPlayerKey(player) {return String(player.uuid)}
+function fwMission(server,player,kind) {
+  fwLoad(server)
+  var owner=fwPlayerKey(player),now=fdGameTime(server)
+  var current=fwData.missions[owner]
+  if(current && current.expires>now)return
+  if(Number(fwData.cooldowns[owner] || 0)>now)return
+  var targetType={mortar:'crusty_chunks:mortarer',depot:'crusty_chunks:worker',headquarters:'crusty_chunks:commander'}[kind]
+  if(!targetType)return
+  var best=null,distance=512*512
+  for(var i=0;i<fdTrackedRobots.length;i++) {
+    var e=fdTrackedRobots[i]
+    if(!e || !e.isAlive() || fdEntityId(e)!==targetType || !fdInWarArea(e.x,e.z) || fdInSafeZone(e.x,e.z))continue
+    var d=fdDistanceSq(e,player)
+    if(d<distance){best=e;distance=d}
+  }
+  if(!best) {fdTellPlayer(server,player,'Нет подходящей цели в загруженной зоне БД рядом с тобой. Новые юниты для задания не создаются.','yellow');return}
+  var zone=fdKey(fdSX(best.x),fdSZ(best.z))
+  fwData.missions[owner]={kind:kind,target:String(best.uuid),zone:zone,x:Math.floor(best.x),z:Math.floor(best.z),expires:now+36000}
+  fwSave(server)
+}
+function fwEntityDeath(event) {
+  fwLoad(event.server)
+  var uuid=String(event.entity.uuid),now=fdGameTime(event.server)
+  var changed=false
+  Object.keys(fwData.missions).forEach(owner=>{
+    var task=fwData.missions[owner]
+    if(task.target!==uuid)return
+    changed=true
+    var killer=event.source && event.source.player
+    if(task.expires>now && killer && fwPlayerKey(killer)===owner &&
+       fdInWarArea(event.entity.x,event.entity.z) && !fdInSafeZone(event.entity.x,event.entity.z)) {
+      fwData.effects[task.zone+':'+task.kind]=now+12000
+      fwMail(event.server,task.zone,'mission_'+task.kind)
+      fwData.cooldowns[owner]=now+12000
+    }
+    delete fwData.missions[owner]
+  })
+  if(changed)fwSave(event.server)
+}
+function fwSend(server,player,tab) {
+  fwLoad(server)
+  var owner=fwPlayerKey(player), now=fdGameTime(server),task=fwData.missions[owner]
+  if(task && task.expires<=now){delete fwData.missions[owner];fwSave(server);task=null}
+  var zone=fdKey(fdSX(player.x),fdSZ(player.z)), defence=fwData.defence[zone]
+  var read=Number(player.persistentData.getLong('front_mail_read'))
+  player.sendData('front:services_data',{tab:tab || 'mail',language:String(player.persistentData.getString('front_language') || 'ru'),
+    role:String(player.persistentData.getString('front_rp_role')),callsign:String(player.persistentData.getString('front_rp_callsign')),
+    flag:String(player.persistentData.getString('front_rp_flag')),state:fdStateName(player),
+    mail:fwData.mail.slice(-8).reverse(),read:read,now:now,mission:task || {},
+    defence:defence || {},zone:zone})
+}
+NetworkEvents.dataReceived('front:services_request',event=>{
+  var player=event.player, server=player.server
+  if(!fdInitialized && !fdInitialize(server))return
+  var action=String(event.data.action || 'mail'),tab=String(event.data.tab || action)
+  if(action==='profile_save') {
+    player.persistentData.putString('front_rp_role',fwCleanText(event.data.role,32))
+    player.persistentData.putString('front_rp_callsign',fwCleanText(event.data.callsign,32))
+    player.persistentData.putString('front_rp_flag',fwCleanText(event.data.flag,12))
+    tab='profile'
+  }
+  if(action==='read') {player.persistentData.putLong('front_mail_read',fdGameTime(server));tab='mail'}
+  if(action==='mission') {fwMission(server,player,String(event.data.kind));tab='missions'}
+  if(action==='cancel') {fwLoad(server);delete fwData.missions[fwPlayerKey(player)];fwSave(server);tab='missions'}
+  fwSend(server,player,tab)
 })
