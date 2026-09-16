@@ -8,6 +8,7 @@ local data, selected, message = nil, nil, ''
 local points = {}
 local areaIndex, left, top, zoom = 1, 0, 0, 1
 local fitted = false
+local configSignature=nil
 local hitCells = {}
 -- CC has 16 palette entries: reserve custom blended terrain colours.
 local bases={{0.18,0.65,0.22},{0.95,0.82,0.12},{0.80,0.18,0.16}}
@@ -81,12 +82,18 @@ local function refresh()
   if not parsedOK or not validSnapshot(snapshot) then
     message='Unsupported snapshot'; return
   end
+  local signature=textutils.serialiseJSON({sector_size=snapshot.sector_size,areas=snapshot.areas,
+    safe_zones=snapshot.safe_zones or {},origins=snapshot.origins or {}})
+  local changed=configSignature~=nil and signature~=configSignature
+  configSignature=signature
   data=snapshot
   data.controls=data.controls or {}; data.terrain=data.terrain or {}; data.garrisons=data.garrisons or {}
   if areaIndex>#data.areas then areaIndex=1; fitted=false end
+  if changed then fitted=false; selected=nil end
   saveJSON(cacheFile,data)
   if not fitted then fit() end
   message='Green: own  Yellow: front  Red: occupied'
+  if changed then message='Configuration changed: map resized. Points preserved.' end
 end
 local function control(sx,sz) return tonumber(data.controls[sx..','..sz]) or 0 end
 local function inRect(x,z,r)
