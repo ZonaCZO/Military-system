@@ -10,6 +10,18 @@ print("2 - Central Server (Core)")
 print(string.rep("-", 29))
 write("Select installation (1-2): ")
 local choice = read()
+print('Programs will be replaced. Network settings and saved data are preserved.')
+
+local function backupProgram(path)
+    if not fs.exists(path) then return end
+    local backup = path .. '.msos-backup'
+    local index = 1
+    while fs.exists(backup) do
+        backup = path .. '.msos-backup-' .. index
+        index = index + 1
+    end
+    fs.move(path, backup)
+end
 
 -- === SAFE DOWNLOAD ===
 local function download(url, path)
@@ -25,11 +37,7 @@ local function download(url, path)
         term.setTextColor(colors.white)
         error('Installation stopped; previous file preserved: ' .. path, 0)
     end
-    if fs.exists(path) then
-        local backup = path .. '.msos-backup'
-        if fs.exists(backup) then error('Existing backup: ' .. backup .. '. Move it before updating.', 0) end
-        fs.move(path, backup)
-    end
+    backupProgram(path)
     fs.move(temporary, path)
     return true
 end
@@ -80,9 +88,11 @@ if choice == "1" then
     download("system/cyrillic_driver.lua", "pr/system/cyrillic_driver.lua")
     -- Applications start the driver themselves. Do not install a second startup driver.
 
+    if not fs.exists('startup.lua') then
     local f = fs.open("startup.lua", "w")
     f.write('shell.run("system")')
     f.close()
+    else print('Existing startup.lua preserved.') end
     print("\nAuto-boot configured for MSOS.")
 
 -- =========================
@@ -114,9 +124,11 @@ elseif choice == "2" then
     download("server/modules/map.lua", "server/modules/map.lua")
     download("server/modules/archive.lua", "server/modules/archive.lua")
 
+    if not fs.exists('startup.lua') then
     local f = fs.open("startup.lua", "w")
     f.write('shell.run("server")')
     f.close()
+    else print('Existing startup.lua preserved.') end
     print("\nAuto-boot configured for Server.")
 
 else
