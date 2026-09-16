@@ -105,7 +105,9 @@ ServerEvents.tick(event => {
     var entry=fmTerrain[terrainKeys[t]]
     snapshot.terrain[terrainKeys[t]]={terrain:entry.terrain,known:entry.known,water_fraction:entry.water_fraction,height:entry.height}
   }
-  snapshot.updated=Number(mapServer.overworld().getGameTime())
+  // Session ticks: metadata only, does not depend on mapped Minecraft methods.
+  snapshot.updated=Number(fmClock)
+  snapshot.updated_clock='bridge_session_ticks'
   snapshot.survey_limit=4096
   mapServer.persistentData.putString('front_cc_snapshot',JSON.stringify(snapshot))
   mapServer.persistentData.putString('front_cc_terrain',JSON.stringify(fmTerrain))
