@@ -217,7 +217,7 @@ local function runProgram(filename)
     -- Если это встроенный терминал
     if filename == "shell" then
         -- Открываем командную строку в новой вкладке (multishell)
-        shell.run("fg", "shell")
+        if multishell then shell.run("fg", "shell") else shell.run("shell") end
         -- После закрытия вкладки (командой exit) перерисовываем рабочий стол
         term.setBackgroundColor(bgCol); term.clear()
         return
@@ -228,7 +228,7 @@ local function runProgram(filename)
     end
     
     -- Запускаем любую программу как отдельное окно через Multishell
-    shell.run("fg", filename)
+    if multishell then shell.run("fg", filename) else shell.run(filename) end
     
     -- Когда программа закрывается, возвращаем фон рабочего стола
     term.setBackgroundColor(bgCol); term.clear()

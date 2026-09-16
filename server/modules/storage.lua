@@ -14,15 +14,13 @@ function storage.load(path, defaultValue)
     return defaultValue
   end
 
-  local fn, err = loadfile(path)
-  if not fn then
-    return defaultValue, err
-  end
-
-  local ok, result = pcall(fn)
-  if not ok then
-    return defaultValue, result
-  end
+  local file = fs.open(path, 'r')
+  if not file then return defaultValue, 'cannot read: ' .. path end
+  local content = file.readAll(); file.close()
+  -- Legacy files contain "return <serialized table>". Parse data, never execute it.
+  content = content:gsub('^%s*return%s+', '')
+  local ok, result = pcall(textutils.unserialize, content)
+  if not ok or result == nil then return defaultValue, 'invalid data: ' .. path end
 
   if result == nil then
     return defaultValue
@@ -37,13 +35,20 @@ function storage.save(path, value)
     ensureDir(dir)
   end
 
-  local file = fs.open(path, "w")
+  local temporary = path .. '.msos-new'
+  local file = fs.open(temporary, "w")
   if not file then
     return false, "cannot open file for write: " .. path
   end
 
   file.write("return " .. textutils.serialize(value))
   file.close()
+  local backup = path .. '.msos-backup'
+  if fs.exists(path) then
+    if fs.exists(backup) then fs.delete(backup) end
+    fs.move(path, backup)
+  end
+  fs.move(temporary, path)
   return true
 end
 
@@ -52,7 +57,7 @@ function storage.listLua(dir)
 
   local out = {}
   for _, name in ipairs(fs.list(dir)) do
-    if name:sub(-4) == ".lua" then
+    if name:sub(-4) == ".lua" and not fs.isDir(fs.combine(dir,name)) then
       out[#out + 1] = name:sub(1, -5)
     end
   end

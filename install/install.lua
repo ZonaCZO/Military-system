@@ -13,15 +13,24 @@ local choice = read()
 
 -- === SAFE DOWNLOAD ===
 local function download(url, path)
-    if fs.exists(path) then fs.delete(path) end 
+    local temporary = path .. '.msos-new'
+    if fs.exists(temporary) then fs.delete(temporary) end
+    local dir = fs.getDir(path)
+    if dir ~= '' then fs.makeDir(dir) end
     print("Downloading " .. path .. "...")
-    local ok = shell.run("wget", BASE .. url, path)
-    if not ok then
+    local ok = shell.run("wget", BASE .. url, temporary)
+    if not ok or not fs.exists(temporary) or fs.getSize(temporary) == 0 then
         term.setTextColor(colors.red)
         print("ERROR downloading: " .. url)
         term.setTextColor(colors.white)
-        return false
+        error('Installation stopped; previous file preserved: ' .. path, 0)
     end
+    if fs.exists(path) then
+        local backup = path .. '.msos-backup'
+        if fs.exists(backup) then error('Existing backup: ' .. backup .. '. Move it before updating.', 0) end
+        fs.move(path, backup)
+    end
+    fs.move(temporary, path)
     return true
 end
 
@@ -38,6 +47,7 @@ if choice == "1" then
     mkdir("sys")
     mkdir("sys/icon")
     mkdir("startup")
+    mkdir("pr/system")
     
     print("\nDownloading Command Software...")
     download("server/general.lua", "pr/general.lua")
@@ -65,7 +75,8 @@ if choice == "1" then
     
     print("\nInstalling Base System...")
     download("system/system.lua", "system.lua")
-    download("system/cyrillic.lua", "startup/cyrillic.lua")
+    download("system/cyrillic_driver.lua", "pr/system/cyrillic_driver.lua")
+    -- Applications start the driver themselves. Do not install a second startup driver.
 
     local f = fs.open("startup.lua", "w")
     f.write('shell.run("system")')
@@ -92,7 +103,7 @@ elseif choice == "2" then
 
     print("\nInstalling Keyboard Driver...")
     mkdir("startup")
-    download("system/cyrillic.lua", "startup/cyrillic.lua")
+    -- The central core already starts its own keyboard driver.
     
     print("Downloading Core Modules...")
     download("server/modules/auth.lua", "server/modules/auth.lua")

@@ -202,9 +202,19 @@ end
 -- === MAIN SERVER LOOP ===
 local function netLoop()
     print("[OK] Listening for secure packets...")
+    local sessionPeers = {}
+    local protected = {PLAN_SAVE=true,CMD_CHAT=true,SQUAD_CMD=true,SQUAD_REPORT=true,
+      GET_LOGS=true,SET_OBJ=true,MAP_FRONT_GET=true,MAP_ADD_MARKER=true,GET_NODES=true,SILO_FIRE_CMD=true}
     
     while true do
         local id, msg = receiveEncrypted()
+        if type(msg)=='table' and protected[msg.type] then
+            if type(msg.userID)~='string' or type(msg.token)~='string' or
+              activeSessions[msg.userID]~=msg.token or sessionPeers[msg.userID]~=id then
+                sendEncrypted(id,{type='ERROR',reason='Login required'})
+                msg=nil
+            end
+        end
         if type(msg) == "table" then
             
             -- === 1. АВТОРИЗАЦИЯ ===
@@ -213,6 +223,7 @@ local function netLoop()
                 if success then
                     local token = generateToken()
                     activeSessions[msg.userID] = token
+                    sessionPeers[msg.userID] = id
                     sendEncrypted(id, {type="AUTH_OK", profile=profile, token=token})
                     print("[AUTH] User " .. msg.userID .. " logged in.")
                 else
