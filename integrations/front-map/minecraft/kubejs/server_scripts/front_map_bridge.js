@@ -7,6 +7,7 @@ var fmCells = []
 var fmCursor = 0
 var fmTerrain = {}
 var fmLoaded = false
+var FM_TERRAIN_VERSION = 2
 var fmMetadata = null
 var fmSignature = ''
 
@@ -18,6 +19,9 @@ function fmPrepare(server) {
   if (!fmLoaded) {
     try { fmTerrain = JSON.parse(String(server.persistentData.getString('front_cc_terrain')) || '{}') } catch (fmError) { fmTerrain = {} }
     fmLoaded = true
+    // Old samples did not distinguish ocean from lakes. Re-survey loaded chunks.
+    if(Number(server.persistentData.getInt('front_cc_terrain_version'))!==FM_TERRAIN_VERSION) fmTerrain={}
+    server.persistentData.putInt('front_cc_terrain_version',FM_TERRAIN_VERSION)
   }
   var signature = JSON.stringify([fmMetadata.sector_size, fmMetadata.areas])
   if (signature !== fmSignature) {
@@ -63,15 +67,17 @@ function fmSurvey(level, cell) {
     var id = biome.isPresent() ? String(biome.get().location()) : ''
     var water = String(FM_Registry.BLOCK.getKey(level.getBlockState(pos).getBlock())) === 'minecraft:water'
     record.samples[String(p)] = {water:water || id.indexOf('ocean')>=0 || id.indexOf('river')>=0,
+      ocean:id.indexOf('ocean')>=0,
       river:id.indexOf('river')>=0, mountain:id.indexOf('peak')>=0 || id.indexOf('mountain')>=0,
       forest:id.indexOf('forest')>=0 || id.indexOf('taiga')>=0, y:y}
   }
   var keys = Object.keys(record.samples)
   if (!keys.length) return
-  var wet=0,river=0,mountain=0,forest=0,height=0
+  var wet=0,ocean=0,river=0,mountain=0,forest=0,height=0
   for (var k=0;k<keys.length;k++) {
     var sample=record.samples[keys[k]]
     if(sample.water)wet++
+    if(sample.ocean)ocean++
     if(sample.river)river++
     if(sample.mountain)mountain++
     if(sample.forest)forest++
@@ -79,7 +85,11 @@ function fmSurvey(level, cell) {
   }
   record.known=keys.length
   record.water_fraction=wet/keys.length
-  record.terrain=river>0?'river':(wet/keys.length>=0.5?'water':(mountain>0?'mountain':(forest>0?'forest':'land')))
+  record.ocean_fraction=ocean/keys.length
+  record.ocean=keys.length>=3 && ocean/keys.length>=0.6
+  record.river=river>0
+  record.mountain=mountain>0
+  record.terrain=record.ocean?'ocean':(river>0?'river':(wet/keys.length>=0.5?'water':(mountain>0?'mountain':(forest>0?'forest':'land'))))
   record.height=Math.round(height/keys.length)
   fmTerrain[key]=record
 }
@@ -103,9 +113,9 @@ ServerEvents.tick(event => {
   var terrainKeys=Object.keys(fmTerrain)
   for(var t=0;t<terrainKeys.length;t++) {
     var entry=fmTerrain[terrainKeys[t]]
-    snapshot.terrain[terrainKeys[t]]={terrain:entry.terrain,known:entry.known,water_fraction:entry.water_fraction,height:entry.height}
+    snapshot.terrain[terrainKeys[t]]={terrain:entry.terrain,known:entry.known,water_fraction:entry.water_fraction,
+      ocean:entry.ocean,ocean_fraction:entry.ocean_fraction,river:entry.river,mountain:entry.mountain,height:entry.height}
   }
-  // Session ticks: metadata only, does not depend on mapped Minecraft methods.
   snapshot.updated=Number(fmClock)
   snapshot.updated_clock='bridge_session_ticks'
   snapshot.survey_limit=4096
