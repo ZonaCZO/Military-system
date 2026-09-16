@@ -18,12 +18,12 @@ local function save(path,value)
 end
 local points=load('data/front_map/points.json')
 local cached=load('data/front_map/snapshot.json')
-function map.handle(msg,profile)
+function map.handle(msg,profile,networkID)
  local response={type='FRONT_LIVE_MAP',request=msg.request,ok=false}
  if not profile then response.error='Account not found';return response end
- local groups=load('data/front_map/groups.json')
- local group=groups[profile.id]
- if type(group)~='string' or not group:match('^[%w_-]+$') then response.error='No state group assigned';return response end
+ -- Supplied by the authenticated central core, never by a client packet.
+ if type(networkID)~='string' or networkID=='' then response.error='Server Network ID missing';return response end
+ local group='network:'..networkID
  points[group]=points[group] or {}
  if msg.action=='read' then
   local port=peripheral.find('front_map')
@@ -51,3 +51,4 @@ function map.handle(msg,profile)
  return response
 end
 return map
+

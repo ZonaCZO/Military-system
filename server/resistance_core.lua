@@ -234,7 +234,7 @@ local function netLoop()
 
             -- === 2. ФРОНТЫ ===
             elseif msg.type == "FRONT_LIVE_MAP" then
-                local ok, response = pcall(liveMap.handle, msg, auth.get(msg.userID))
+                local ok, response = pcall(liveMap.handle, msg, auth.get(msg.userID), PROTOCOL)
                 if not ok then response={type="FRONT_LIVE_MAP",request=msg.request,ok=false,error="Map service error"} end
                 sendEncrypted(id, response)
             elseif msg.type == "FRONT_LIST" then
