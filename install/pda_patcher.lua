@@ -1,115 +1,49 @@
--- === TACTICAL PDA DEPLOYMENT TOOL (GITHUB) ===
--- [Installs Tracker, Rebel & PDAOS via GitHub]
-
--- Используем RAW ссылки, чтобы скачать чистый код
-local pdaFiles = {
-    {
-        name = "tracker.lua", 
-        url = "https://raw.githubusercontent.com/ZonaCZO/Military-system/main/patch/tracker.lua"
-    },
-    {
-        name = "Soldier.lua",   
-        url = "https://raw.githubusercontent.com/ZonaCZO/Military-system/main/patch/rebel.lua"
-    },
-    {
-        name = "PDAOS.lua",   
-        url = "https://raw.githubusercontent.com/ZonaCZO/Military-system/main/patch/PDAOS.lua"
-    }
-}
-
-local driveSide = nil
-
--- Поиск дисковода
-for _, side in ipairs(rs.getSides()) do
-    if peripheral.getType(side) == "drive" then
-        driveSide = side
-        break
+-- Downloads are staged before installed files change. Never wipes the disk.
+local BASE='https://raw.githubusercontent.com/ZonaCZO/Military-system/main/'
+local files={{'patch/tracker.lua','tracker.lua'},{'patch/rebel.lua','Soldier.lua'},
+  {'patch/PDAOS.lua','PDAOS.lua'},{'system/cyrillic_driver.lua','system/cyrillic_driver.lua'}}
+local function install(root)
+  local startup=fs.combine(root,'startup.lua')
+  if fs.exists(startup..'.msos-backup') then error('Move existing startup backup before updating') end
+  for _,entry in ipairs(files) do
+    local path=fs.combine(root,entry[2])
+    if fs.exists(path..'.msos-backup') then error('Move existing backup: '..path) end
+    local staging=path..'.msos-new'
+    fs.makeDir(fs.getDir(path))
+    if fs.exists(staging) then fs.delete(staging) end
+    if not shell.run('wget',BASE..entry[1],staging) or not fs.exists(staging) or fs.getSize(staging)==0 then
+      error('Download failed; installed files unchanged: '..entry[1])
     end
+  end
+  for _,entry in ipairs(files) do
+    local path=fs.combine(root,entry[2])
+    if fs.exists(path) then fs.move(path,path..'.msos-backup') end
+    fs.move(path..'.msos-new',path)
+  end
+  if fs.exists(startup) then fs.move(startup,startup..'.msos-backup') end
+  local f=assert(fs.open(startup,'w'))
+  f.writeLine('parallel.waitForAny(function() shell.run("tracker.lua") end, function() shell.run("PDAOS.lua") end)')
+  f.close()
 end
-
-if not driveSide then
-    -- === ЛОКАЛЬНАЯ УСТАНОВКА (ЕСЛИ НЕТ ДИСКОВОДА) ===
-    term.clear()
-    term.setCursorPos(1,1)
-    print("No Disk Drive found.")
-    print("Installing to THIS device...")
-    print("Proceed? (y/n)")
-    if read() ~= "y" then error("Aborted.") end
-    
-    for _, file in ipairs(pdaFiles) do
-        print("Downloading " .. file.name .. "...")
-        -- Удаляем старый файл, если есть
-        if fs.exists(file.name) then fs.delete(file.name) end
-        -- Скачиваем новый через wget
-        shell.run("wget", file.url, file.name)
+local drive=peripheral.find('drive')
+if not drive then
+  print('Install PDA on THIS computer? y/n')
+  if read()~='y' then return end
+  install('/')
+  print('Installed. Reboot when ready.')
+  return
+end
+while true do
+  print('Insert writable data disk. Unrelated files are preserved.')
+  while not drive.isDiskPresent() do sleep(0.5) end
+  local root=drive.getMountPath()
+  if not root then print('Not a data disk.')
+  else
+    print('Install to '..root..'? y/n')
+    if read()=='y' then
+      local ok,err=pcall(install,root)
+      print(ok and 'Installation complete.' or tostring(err))
     end
-    
-    -- Создаем стартап локально
-    print("Configuring startup...")
-    local f = fs.open("startup.lua", "w")
-    f.writeLine('shell.run("bg tracker.lua")') -- Запуск трекера в фоне
-    f.writeLine('shell.run("PDAOS.lua")')      -- Запуск ОС Планшета
-    f.close()
-    
-    print("Done. Rebooting...")
-    sleep(1)
-    os.reboot()
-else
-    -- === ФАБРИКА КПК (ЧЕРЕЗ ДИСКОВОД) ===
-    while true do
-        term.clear()
-        term.setCursorPos(1,1)
-        print("=== PDA FACTORY (GITHUB) ===")
-        print("Source: ZonaCZO/Military-system")
-        print("-----------------------------")
-        print("Insert Disk/PDA into drive...")
-        
-        -- Ждем диск
-        while not disk.isPresent(driveSide) do sleep(0.5) end
-        
-        local path = disk.getMountPath(driveSide)
-        print("Drive detected at: " .. path)
-        print("Wiping old data...")
-        
-        -- Полная очистка диска
-        local list = fs.list(path)
-        for _, file in ipairs(list) do
-            fs.delete(fs.combine(path, file))
-        end
-        
-        -- Скачивание файлов
-        print("Installing firmware...")
-        for _, file in ipairs(pdaFiles) do
-            local fullPath = fs.combine(path, file.name)
-            print(" -> " .. file.name)
-            
-            -- Скачиваем во временный файл, потом перемещаем на диск
-            shell.run("wget", file.url, "temp_download")
-            
-            if fs.exists("temp_download") then
-                fs.move("temp_download", fullPath)
-            else
-                term.setTextColor(colors.red)
-                print("Download FAILED for " .. file.name)
-                term.setTextColor(colors.white)
-                sleep(2)
-            end
-        end
-        
-        -- Создание startup на диске
-        local s = fs.open(fs.combine(path, "startup.lua"), "w")
-        s.writeLine('shell.run("bg tracker.lua")')
-        s.writeLine('shell.run("PDAOS.lua")')
-        s.close()
-        
-        disk.setLabel(driveSide, "PDA")
-        term.setTextColor(colors.green)
-        print("\nINSTALLATION COMPLETE.")
-        term.setTextColor(colors.white)
-        print("You may eject the device.")
-        
-        -- Ждем, пока диск вытащат (или выкидываем сами)
-        disk.eject(driveSide)
-        sleep(2)
-    end
+  end
+  drive.ejectDisk(); sleep(1)
 end

@@ -35,7 +35,7 @@ function auth.hasAccess(profile, minRole)
 end
 
 function auth.get(userId)
-  if not userId then return nil end
+  if type(userId)~='string' or userId=='' or userId:find('[/\\]') or userId:find('..',1,true) then return nil end
   return storage.load(ROOT .. "/" .. tostring(userId) .. ".lua", nil)
 end
 
@@ -67,7 +67,9 @@ function auth.login(userId, password, requestedRole)
     return false, nil, "insufficient role"
   end
 
-  return true, profile, nil
+  local publicProfile = {}
+  for key,value in pairs(profile) do if key~='password' then publicProfile[key]=value end end
+  return true, publicProfile, nil
 end
 
 function auth.list()
