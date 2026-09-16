@@ -70,33 +70,66 @@ local function fit()
   fitted = true
 end
 local host=nil
-local protocol='military_front_map_v9'
+local protocol='default_net'
+local networkKey='none'
+local userID,token=nil,nil
+-- Same legacy cipher and key representation as leader/radar/front_browser.
+local function crypt(text,key)
+  if not key or key=='' or key=='none' then return text end
+  local S={};for i=0,255 do S[i]=i end
+  local j=0
+  for i=0,255 do
+    j=(j+S[i]+string.byte(key,(i%#key)+1))%256;S[i],S[j]=S[j],S[i]
+  end
+  local i=0;j=0;local output={}
+  for k=1,#text do
+    i=(i+1)%256;j=(j+S[i])%256;S[i],S[j]=S[j],S[i]
+    output[k]=string.char(bit.bxor(string.byte(text,k),S[(S[i]+S[j])%256]))
+  end
+  return table.concat(output)
+end
 local sequence=0
 local function rpc(payload)
   sequence=sequence+1
   payload.request=tostring(os.epoch('utc'))..'_'..sequence
-  rednet.send(host,payload,protocol)
+  if payload.action=='login' then
+    payload.type='LOGIN';payload.userID=payload.user;payload.userPass=payload.password
+    payload.user=nil;payload.password=nil
+  else payload.type='FRONT_LIVE_MAP';payload.userID=userID;payload.token=token end
+  rednet.send(host,crypt(textutils.serialize(payload),networkKey),protocol)
   local deadline=os.epoch('utc')+5000
   while os.epoch('utc')<deadline do
     local sender,response=rednet.receive(protocol,math.max(0,(deadline-os.epoch('utc'))/1000))
-    if sender==host and type(response)=='table' and response.request==payload.request then return response end
+    if sender==host and type(response)=='string' then
+      local ok,decoded=pcall(textutils.unserialize,crypt(response,networkKey))
+      if ok and type(decoded)=='table' and decoded.request==payload.request then return decoded end
+    end
   end
   return {ok=false,error='Map server did not answer'}
 end
 local function connect()
   local opened=false
   for _,name in ipairs(peripheral.getNames()) do
-    if peripheral.hasType(name,'modem') and not peripheral.call(name,'isWireless') then rednet.open(name);opened=true end
+    if peripheral.hasType(name,'modem') then rednet.open(name);opened=true end
   end
-  assert(opened,'Attach a wired modem connected to the map server')
+  assert(opened,'Attach a wireless or wired modem')
   term.redirect(original);term.setBackgroundColor(colors.black);term.setTextColor(colors.white);term.clear();term.setCursorPos(1,1)
-  local connection=loadJSON('front_map_connection.json') or {}
-  host=tonumber(connection.host)
-  if not host then print('Map server computer ID:');host=tonumber(read());assert(host,'Invalid server ID');saveJSON('front_map_connection.json',{host=host}) end
+  if fs.exists('.net_config.txt') then
+    local f=assert(fs.open('.net_config.txt','r'));protocol=f.readLine() or protocol;networkKey=f.readLine() or 'none';f.close()
+  else
+    print('Network ID (same as Military-system):');local p=read();if p~='' then protocol=p end
+    print('Encryption Key (same as central server):');local k=read('*')
+    if k~='' then networkKey=textutils.serialize(k):gsub('.',function(c)return string.char((string.byte(c)*7)%256)end) end
+    local f=assert(fs.open('.net_config.txt','w'));f.writeLine(protocol);f.writeLine(networkKey);f.close()
+  end
+  assert(networkKey~='' and networkKey~='none','Configure a non-empty network Encryption Key on server and client before radio login')
+  host=rednet.lookup(protocol,'central_core')
+  assert(host,'Central server not found. Check modem range, dimension and Network ID.')
   print('Military-system user ID:');local user=read()
   print('Password:');local password=read('*')
   local result=rpc({action='login',user=user,password=password});password=nil
   assert(result.ok,result.error or 'Login failed')
+  userID=user;token=result.token
   -- No client-owned map/point database. Only the live session is held in RAM.
   data=nil;points={};fitted=false
 end

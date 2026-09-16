@@ -200,10 +200,12 @@ local function receiveEncrypted()
 end
 
 -- === MAIN SERVER LOOP ===
+local liveMap = require('server.modules.front_live_map')
+
 local function netLoop()
     print("[OK] Listening for secure packets...")
     local sessionPeers = {}
-    local protected = {PLAN_SAVE=true,CMD_CHAT=true,SQUAD_CMD=true,SQUAD_REPORT=true,
+    local protected = {FRONT_LIVE_MAP=true,PLAN_SAVE=true,CMD_CHAT=true,SQUAD_CMD=true,SQUAD_REPORT=true,
       GET_LOGS=true,SET_OBJ=true,MAP_FRONT_GET=true,MAP_ADD_MARKER=true,GET_NODES=true,SILO_FIRE_CMD=true}
     
     while true do
@@ -211,7 +213,7 @@ local function netLoop()
         if type(msg)=='table' and protected[msg.type] then
             if type(msg.userID)~='string' or type(msg.token)~='string' or
               activeSessions[msg.userID]~=msg.token or sessionPeers[msg.userID]~=id then
-                sendEncrypted(id,{type='ERROR',reason='Login required'})
+                sendEncrypted(id,{type='ERROR',reason='Login required',error='Login required',request=msg.request,ok=false})
                 msg=nil
             end
         end
@@ -224,13 +226,17 @@ local function netLoop()
                     local token = generateToken()
                     activeSessions[msg.userID] = token
                     sessionPeers[msg.userID] = id
-                    sendEncrypted(id, {type="AUTH_OK", profile=profile, token=token})
+                    sendEncrypted(id, {type="AUTH_OK", profile=profile, token=token, request=msg.request, ok=true})
                     print("[AUTH] User " .. msg.userID .. " logged in.")
                 else
-                    sendEncrypted(id, {type="AUTH_FAIL", reason=err})
+                    sendEncrypted(id, {type="AUTH_FAIL", reason=err, error=err, request=msg.request, ok=false})
                 end
 
             -- === 2. ФРОНТЫ ===
+            elseif msg.type == "FRONT_LIVE_MAP" then
+                local ok, response = pcall(liveMap.handle, msg, auth.get(msg.userID))
+                if not ok then response={type="FRONT_LIVE_MAP",request=msg.request,ok=false,error="Map service error"} end
+                sendEncrypted(id, response)
             elseif msg.type == "FRONT_LIST" then
                 sendEncrypted(id, {type="FRONT_LIST", data=fronts.list()})
             elseif msg.type == "FRONT_GET" then

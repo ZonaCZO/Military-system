@@ -7,7 +7,7 @@ print("=== MILITARY SYSTEM V14.3 ===")
 term.setTextColor(colors.white)
 print("1 - Command PC (HQ / MSOS)")
 print("2 - Central Server (Core)")
-print("3 - Dedicated Front Map Server (wired)")
+print("3 - Legacy map server (retired; use Central Server)")
 print(string.rep("-", 29))
 write("Select installation (1-3): ")
 local choice = read()
@@ -123,6 +123,7 @@ elseif choice == "2" then
     -- The central core already starts its own keyboard driver.
     
     print("Downloading Core Modules...")
+    download("server/modules/front_live_map.lua", "server/modules/front_live_map.lua")
     download("server/modules/auth.lua", "server/modules/auth.lua")
     download("server/modules/storage.lua", "server/modules/storage.lua")
     download("server/modules/fronts.lua", "server/modules/fronts.lua")
@@ -137,22 +138,9 @@ elseif choice == "2" then
     print("\nAuto-boot configured for Server.")
 
 elseif choice == "3" then
-    mkdir("server")
-    mkdir("server/modules")
-    mkdir("data/users")
-    mkdir("data/front_map")
-    download("server/front_map_host.lua", "server/front_map_host.lua")
-    download("server/modules/auth.lua", "server/modules/auth.lua")
-    download("server/modules/storage.lua", "server/modules/storage.lua")
-    download("server/front_map_groups.example.json", "data/front_map/groups.example.json")
-    print("Copy existing data/users from your Military-system server.")
-    print("Configure data/front_map/groups.json; attach lectern and WIRED modem.")
-    print("See docs/FRONT-V9-INSTALL-RU.md before starting.")
-    if not fs.exists("startup.lua") then
-        local f = fs.open("startup.lua", "w")
-        f.write('shell.run("server/front_map_host.lua")')
-        f.close()
-    else print("Existing startup.lua preserved; start server/front_map_host.lua manually.") end
+    print("Dedicated map host is retired. Update Central Server (option 2).")
+    print("Attach the front_map lectern there; configure data/front_map/groups.json.")
+    return
 else
     term.setTextColor(colors.red)
     print("Invalid choice. Installation aborted.")
