@@ -26,6 +26,31 @@ var fdSupplyCache = {}
 var fdOps = { liberated: {}, protection: {}, garrisons: {}, alerts: {} }
 var fdOpsDirty = false
 var fdMapConfigWarning = ''
+function fdZoneSize() { return Number(fdConfig.frontZoneSize || 64) }
+function fdMajorX(x) { return Math.floor(x / Number(fdConfig.sectorSize)) }
+function fdMajorZ(z) { return Math.floor(z / Number(fdConfig.sectorSize)) }
+function fdMajorKey(sx,sz) {
+  return fdKey(fdMajorX((sx+0.5)*fdZoneSize()),fdMajorZ((sz+0.5)*fdZoneSize()))
+}
+function fdZoneLabel(sx,sz) {
+  var n=Number(fdConfig.sectorSize)/fdZoneSize()
+  return String.fromCharCode(65+sx-Math.floor(sx/n)*n)+(1+sz-Math.floor(sz/n)*n)
+}
+function fdMajorCenter(sx,sz) {
+  var size=Number(fdConfig.sectorSize)
+  return {x:(sx+0.5)*size,z:(sz+0.5)*size}
+}
+function fdStateStorage() { return 'front_director_v8_zones_'+fdZoneSize() }
+function fdOpsStorage() { return 'front_director_v8_ops_'+fdZoneSize() }
+function fdExpandLegacy(source) {
+  var expanded={},n=Number(fdConfig.sectorSize)/fdZoneSize()
+  Object.keys(source || {}).forEach(key => {
+    var pair=key.split(','),sx=Number(pair[0]),sz=Number(pair[1])
+    if(!isFinite(sx) || !isFinite(sz)) return
+    for(var x=0;x<n;x++) for(var z=0;z<n;z++) expanded[fdKey(sx*n+x,sz*n+z)]=source[key]
+  })
+  return expanded
+}
 
 // Called by the map bridge every 20 seconds, not on every game tick.
 function fdRefreshMapConfig(server) {
@@ -35,6 +60,7 @@ function fdRefreshMapConfig(server) {
     if (!next) throw new Error('Config missing or invalid JSON')
     if (Number(next.sectorSize)!==Number(fdConfig.sectorSize))
       throw new Error('sectorSize changed: live reload refused to preserve sector ownership; use a planned war reset')
+    if(Number(next.frontZoneSize || 64)!==fdZoneSize()) throw new Error('frontZoneSize change requires planned migration; live reload refused')
     var lists=['warAreas','safeZones','origins']
     for(var l=0;l<lists.length;l++) {
       var list=next[lists[l]]
@@ -87,6 +113,9 @@ function fdTell(server, text, color) {
 function fdLoadConfig() {
   fdConfig = JsonIO.read(FD_CONFIG)
   if (!fdConfig) throw new Error(`Не найден ${FD_CONFIG}`)
+  var major=Number(fdConfig.sectorSize),small=fdZoneSize()
+  if(!isFinite(major) || !isFinite(small) || small<32 || major%small!==0 || major/small>8)
+    throw new Error('frontZoneSize must divide sectorSize, minimum 32 and maximum 8 zones per side')
 }
 
 function fdWorld(server) {
@@ -94,8 +123,8 @@ function fdWorld(server) {
 }
 
 function fdKey(sx, sz) { return sx + ',' + sz }
-function fdSX(x) { return Math.floor(x / Number(fdConfig.sectorSize)) }
-function fdSZ(z) { return Math.floor(z / Number(fdConfig.sectorSize)) }
+function fdSX(x) { return Math.floor(x / fdZoneSize()) }
+function fdSZ(z) { return Math.floor(z / fdZoneSize()) }
 function fdOptionNumber(name, fallback) {
   return fdConfig[name] == null ? fallback : Number(fdConfig[name])
 }
@@ -106,8 +135,9 @@ function fdGameTime(server) {
 
 function fdOpsLoad(server) {
   try {
-    fdOps = server.persistentData.contains('front_director_v6_ops')
-      ? JSON.parse(String(server.persistentData.getString('front_director_v6_ops')))
+    var migrated=server.persistentData.contains(fdOpsStorage())
+    fdOps = server.persistentData.contains(migrated?fdOpsStorage():'front_director_v6_ops')
+      ? JSON.parse(String(server.persistentData.getString(migrated?fdOpsStorage():'front_director_v6_ops')))
       : { liberated: {}, protection: {}, garrisons: {}, alerts: {} }
   } catch (error) {
     console.error('[Front Director v6] operations state reset: ' + error)
@@ -117,11 +147,18 @@ function fdOpsLoad(server) {
   if (!fdOps.protection) fdOps.protection = {}
   if (!fdOps.garrisons) fdOps.garrisons = {}
   if (!fdOps.alerts) fdOps.alerts = {}
+  if(!migrated) {
+    fdOps.liberated=fdExpandLegacy(fdOps.liberated)
+    fdOps.protection=fdExpandLegacy(fdOps.protection)
+    fdOps.alerts=fdExpandLegacy(fdOps.alerts)
+    fdOpsDirty=true
+    fdOpsSave(server)
+  }
 }
 
 function fdOpsSave(server) {
   if (!fdOpsDirty) return
-  server.persistentData.putString('front_director_v6_ops', JSON.stringify(fdOps))
+  server.persistentData.putString(fdOpsStorage(), JSON.stringify(fdOps))
   fdOpsDirty = false
 }
 
@@ -161,7 +198,7 @@ function fdIsAircraftType(type) {
 }
 
 function fdSectorCenter(sx, sz) {
-  var size = Number(fdConfig.sectorSize)
+  var size = fdZoneSize()
   return { x: sx * size + Math.floor(size / 2), z: sz * size + Math.floor(size / 2) }
 }
 
@@ -203,7 +240,7 @@ function fdBiomeIdAtLoaded(level, x, z) {
 function fdSectorTerrain(level, sx, sz) {
   var key = fdKey(sx, sz)
   if (fdTerrainCache[key] != null) return fdTerrainCache[key]
-  var size = Number(fdConfig.sectorSize)
+  var size = fdZoneSize()
   var startX = sx * size
   var startZ = sz * size
   var points = [[0.5,0.5],[0.25,0.25],[0.75,0.25],[0.25,0.75],[0.75,0.75]]
@@ -247,20 +284,21 @@ function fdSetControl(sx, sz, value) {
 
 function fdSave(server) {
   if (!fdDirty) return
-  server.persistentData.putString('front_director_v3_state', JSON.stringify(fdState))
+  server.persistentData.putString(fdStateStorage(), JSON.stringify(fdState))
   fdDirty = false
 }
 
 function fdLoadState(server) {
   try {
-    fdState = server.persistentData.contains('front_director_v3_state')
-      ? JSON.parse(String(server.persistentData.getString('front_director_v3_state')))
+    var migrated=server.persistentData.contains(fdStateStorage())
+    fdState = server.persistentData.contains(migrated?fdStateStorage():'front_director_v3_state')
+      ? JSON.parse(String(server.persistentData.getString(migrated?fdStateStorage():'front_director_v3_state')))
       : {}
   } catch (error) {
     console.error('[Front Director v3] state reset: ' + error)
     fdState = {}
   }
-
+  if(!migrated) { fdState=fdExpandLegacy(fdState); fdDirty=true }
   for (var i = 0; i < fdConfig.origins.length; i++) {
     fdSetControl(
       fdSX(fdConfig.origins[i].x),
@@ -375,7 +413,7 @@ function fdStrategicExpansion(server) {
     var strategicGain = Math.max(1, Math.round(Number(fdConfig.expansionControlGain) *
       fdStrength(candidates[i].sx, candidates[i].sz) * terrain.factor))
     var candidateKey = fdKey(candidates[i].sx, candidates[i].sz)
-    var garrison = fdOps.garrisons[candidateKey]
+    var garrison = fdOps.garrisons[fdMajorKey(candidates[i].sx,candidates[i].sz)]
     if (garrison && Number(garrison.strength) > 0) {
       strategicGain -= Number(garrison.strength) * fdOptionNumber('garrisonDefensePerSoldier', 3)
       fdOps.alerts[candidateKey] = Math.min(4, Number(fdOps.alerts[candidateKey] || 0) + 1)
@@ -396,7 +434,7 @@ function fdCount(server, selector) {
 }
 
 function fdSectorBox(sx, sz) {
-  var size = Number(fdConfig.sectorSize)
+  var size = fdZoneSize()
   return `x=${sx * size},y=-64,z=${sz * size},dx=${size - 1},dy=384,dz=${size - 1}`
 }
 
@@ -619,7 +657,7 @@ function fdIsCitySector(level, sx, sz) {
   if (fdCityCache[key] != null) return fdCityCache[key]
 
   try {
-    var citySectorSize = Number(fdConfig.sectorSize)
+    var citySectorSize = fdZoneSize()
     var startX = sx * citySectorSize
     var startZ = sz * citySectorSize
     var samples = [
@@ -647,7 +685,7 @@ function fdIsCitySector(level, sx, sz) {
 
 function fdSpawnRobot(server, level, sx, sz, anchor, forcedType) {
   if (fdSectorTerrain(level, sx, sz).ocean) return false
-  var size = Number(fdConfig.sectorSize)
+  var size = fdZoneSize()
   var margin = 20
   for (var attempt = 0; attempt < Number(fdConfig.surfaceAttempts); attempt++) {
     var x
@@ -701,7 +739,7 @@ function fdShowPlayerStatus(server, player) {
   var control = fdControl(sx, sz)
   var terrain = fdSectorTerrain(fdWorld(server), sx, sz)
   var supplied = control > 0 ? fdIsSupplied(sx, sz) : false
-  var garrison = fdOps.garrisons[fdKey(sx, sz)]
+  var garrison = fdOps.garrisons[fdMajorKey(sx,sz)]
   var label = 'мирная территория'
   var color = 'green'
 
@@ -724,7 +762,7 @@ function fdShowPlayerStatus(server, player) {
 
   var name = String(player.username)
   var message = JSON.stringify({
-    text: '[Фронт] ' + label + ' | сектор ' + sx + ',' + sz + ' | контроль ' + control +
+    text: '[Фронт] ' + label + ' | сектор ТрО ' + fdMajorKey(sx,sz) + ' | зона ' + fdZoneLabel(sx,sz) + ' | контроль ' + control +
       '% | ' + terrain.name + (control > 0 ? (supplied ? ' | снабжение есть' : ' | ОКРУЖЁН') : '') +
       (garrison ? ' | ТрО ' + garrison.strength + '/' + garrison.maxStrength : ''),
     color: color
@@ -764,7 +802,7 @@ global.frontMapBuild = function(server) {
   var origins=[]
   for(var i=0;i<fdConfig.origins.length;i++) origins.push({name:String(fdConfig.origins[i].name || ''),
     x:Number(fdConfig.origins[i].x),z:Number(fdConfig.origins[i].z)})
-  return JSON.stringify({version: 1, sector_size: Number(fdConfig.sectorSize),
+  return JSON.stringify({version: 1, sector_size: fdZoneSize(),major_sector_size:Number(fdConfig.sectorSize),
     enemy: fdEnemyName(server), areas: rectangles(fdConfig.warAreas), safe_zones: rectangles(fdConfig.safeZones),
     origins: origins, controls: fdState, garrisons: fdOps.garrisons})
 }
@@ -857,8 +895,8 @@ function fdGarrisonCommand(context, mode) {
   if (player == null) return 0
   var server = source.server
   if (!fdInitialized && !fdInitialize(server)) return 0
-  var sx = fdSX(player.x)
-  var sz = fdSZ(player.z)
+  var sx = fdMajorX(player.x)
+  var sz = fdMajorZ(player.z)
   var key = fdKey(sx, sz)
   var existing = fdOps.garrisons[key]
 
@@ -867,7 +905,7 @@ function fdGarrisonCommand(context, mode) {
     else fdTellPlayer(server, player, 'ТрО сектора ' + key + ': уровень ' + existing.level + ', бойцов ' + existing.strength + '/' + existing.maxStrength + '.', 'blue')
     return 1
   }
-  if (!fdInWarArea(player.x, player.z) || fdInSafeZone(player.x, player.z) || fdControl(sx, sz) > 0) {
+  if (!fdInWarArea(player.x, player.z) || fdInSafeZone(player.x, player.z) || fdControl(fdSX(player.x),fdSZ(player.z)) > 0) {
     fdTellPlayer(server, player, 'ТрО можно разместить только в свободном секторе театра войны.', 'red')
     return 0
   }
@@ -906,7 +944,7 @@ function fdHqPayload(server, player) {
   var sx = fdSX(player.x)
   var sz = fdSZ(player.z)
   var control = fdControl(sx, sz)
-  var key = fdKey(sx, sz)
+  var key = fdMajorKey(sx, sz)
   var terrain = fdSectorTerrain(fdWorld(server), sx, sz)
   var garrison = fdOps.garrisons[key]
   var zone = !fdInWarArea(player.x, player.z) ? 'Вне театра войны' :
@@ -916,7 +954,8 @@ function fdHqPayload(server, player) {
     enemyName: fdEnemyName(server), language: String(player.persistentData.getString('front_language') || 'ru'),
     canEdit: player.hasPermissions(2),
     zoneCode: !fdInWarArea(player.x, player.z) ? 'outside' : (fdInSafeZone(player.x, player.z) ? 'safe' : (fdIsFrontier(sx, sz) ? 'front' : (control > 0 ? 'enemy' : 'free'))),
-    stateName: fdStateName(player), sector: key, control: Math.round(control), zone: zone,
+    stateName: fdStateName(player), sector: key+' / '+fdZoneLabel(sx,sz),control: Math.round(control), zone: zone,
+    tacticalZone:fdKey(sx,sz),majorSector:key,
     terrain: terrain.name, supplied: control > 0 ? fdIsSupplied(sx, sz) : true,
     garrisonLevel: garrison ? Number(garrison.level) : 0,
     garrisonStrength: garrison ? Number(garrison.strength) : 0,
@@ -990,7 +1029,7 @@ function fdFrontMapCommand(context) {
   var nearestGarrison = null
   Object.keys(fdOps.garrisons).forEach(key => {
     var pair = key.split(',')
-    var center = fdSectorCenter(Number(pair[0]), Number(pair[1]))
+    var center = fdMajorCenter(Number(pair[0]), Number(pair[1]))
     var dx = center.x - player.x
     var dz = center.z - player.z
     var distanceSq = dx * dx + dz * dz
@@ -1139,9 +1178,15 @@ ServerEvents.commandRegistry(event => {
 function fdUpdateLocalFront(server) {
   var level = fdWorld(server)
   var active = fdActiveSectors(server, level)
+  var parentCounts={}
 
   Object.keys(active).forEach(key => {
     var activeSector = active[key]
+    var parentKey=fdMajorKey(activeSector.sx,activeSector.sz)
+    if(parentCounts[parentKey]==null) {
+      var pair=parentKey.split(','),size=Number(fdConfig.sectorSize)
+      parentCounts[parentKey]=fdCount(server,`@e[tag=fd_robot,x=${Number(pair[0])*size},y=-64,z=${Number(pair[1])*size},dx=${size-1},dy=384,dz=${size-1}]`)
+    }
     var control = fdControl(activeSector.sx, activeSector.sz)
     var frontSector = fdIsFrontier(activeSector.sx, activeSector.sz)
     if (!frontSector && control < Number(fdConfig.spawnControlMinimum)) return
@@ -1171,7 +1216,9 @@ function fdUpdateLocalFront(server) {
 
     if (robots >= cap) return
     var selectedBatch = frontSector ? fdOptionNumber('frontSpawnBatch', fdConfig.spawnBatch) : fdOptionNumber('rearSpawnBatch', 2)
-    var wave = Math.min(selectedBatch, cap - robots)
+    var wave = Math.min(selectedBatch, cap - robots,
+      Math.max(0,Number(fdConfig.absoluteRobotCapPerSector)-parentCounts[parentKey]))
+    if(wave<=0) return
     var squadAnchor = null
     var rarePresent = fdCount(server, `@e[tag=fd_rare_support,${fdSectorBox(activeSector.sx, activeSector.sz)}]`) > 0
     for (var i = 0; i < wave; i++) {
@@ -1191,6 +1238,7 @@ function fdUpdateLocalFront(server) {
         forcedType = fdSupportType()
       }
       var spawnedAt = fdSpawnRobot(server, level, activeSector.sx, activeSector.sz, squadAnchor, forcedType)
+      if(spawnedAt) parentCounts[parentKey]++
       if (rareSupport && spawnedAt) {
         fdCmd(server, `tag @e[type=${forcedType},tag=fd_robot,sort=nearest,limit=1,x=${spawnedAt.x},z=${spawnedAt.z},distance=..24] add fd_rare_support`)
       }
@@ -1214,7 +1262,7 @@ function fdInitialize(server) {
     fdRebuildSupply()
     fdExpansionClock = Number(fdConfig.expansionIntervalMinutes) * 60 * 20
     fdInitialized = true
-    fdTell(server, `Секторный фронт загружен. Размер сектора: ${fdConfig.sectorSize} блоков.`, 'yellow')
+    fdTell(server, `Фронт загружен: сектор ТрО ${fdConfig.sectorSize}, зона боя ${fdZoneSize()} блоков.`, 'yellow')
     console.info('[Front Director v3.2] initialized successfully')
     return true
   } catch (error) {
