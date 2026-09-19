@@ -1,3 +1,5 @@
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/sakutoro)
+
 # CC-Military Strategic System
 
 A specialized collection of ComputerCraft programs for secure file management, networking, and tactical PDA enhancements.
@@ -19,18 +21,6 @@ You need to choose between commander system and server.
 3. Type the `wget run` command listed under the desired program.
 4. Run the program by typing its name.
 
-## MSOS + Frontline Survival
-
-Military-system (MSOS) provides the in-game computer interface. KubeJS manages the enemy front; players manage tactics and unit orders. MSOS is not a replacement for the Minecraft server or the front director.
-
-- [MSOS front-map setup — Русский / Українська / English](docs/FRONT-MAP.md)
-- [Game guide: Русский](https://github.com/ZonaCZO/kubejs/blob/main/RU.md)
-- [Посібник гри: Українська](https://github.com/ZonaCZO/kubejs/blob/main/UK.md)
-- [Game guide: English](https://github.com/ZonaCZO/kubejs/blob/main/EN.md)
-
-The dedicated [GitHub Wiki](https://github.com/ZonaCZO/kubejs/wiki) is the intended documentation destination. Until it is enabled and initialized, use the language files above.
-
-The military map uses the existing account login and `.net_config.txt` network settings. Map snapshots and shared points are stored on the central CC computer, not as a client-owned database. No separate state ID is needed. See the setup guide for permissions, the KubeJS bridge, and troubleshooting.
 
 ---
 
