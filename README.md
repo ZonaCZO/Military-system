@@ -20,6 +20,14 @@ The OS also includes an optional Wake Nodes manager. It works with the separate
 is attached. If the mod or peripheral is absent, the manager reports that the feature is
 unavailable and exits normally; no other MSOS program depends on the mod.
 
+## Updating
+
+The complete MSOS includes an `updater` application and icon. The Central Server
+installs the same program as `/update.lua`. It detects the installation type,
+downloads the current official installer and replaces managed programs and icons.
+Network configuration and operational data are preserved. On an ambiguous computer,
+run `updater os` or `update server` explicitly.
+
 * **Installer:**.
 `wget run https://raw.githubusercontent.com/ZonaCZO/Military-system/main/install/install.lua`
 
