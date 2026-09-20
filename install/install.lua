@@ -77,6 +77,7 @@ if choice == "1" then
     download("system/plan_browser.lua", "pr/plan_browser.lua")
     download("system/radar.lua", "pr/radar.lua")
     download("system/military_map.lua", "pr/military_map.lua")
+    download("system/wake_nodes.lua", "pr/wake_nodes.lua")
     download("ballistix/nuke_center.lua", "pr/rocket.lua")
 
     print("\nDownloading Icons...")
@@ -89,6 +90,7 @@ if choice == "1" then
     download("system/icons/plan_browser.nfp", "sys/icon/plan_browser.nfp")
     download("system/icons/radar.nfp", "sys/icon/radar.nfp")
     download("system/icons/military_map.nfp", "sys/icon/military_map.nfp")
+    download("system/icons/wake_nodes.nfp", "sys/icon/wake_nodes.nfp")
     download("system/icons/rocket.nfp", "sys/icon/rocket.nfp")
     
     print("\nInstalling Base System...")
