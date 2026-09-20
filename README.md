@@ -15,6 +15,11 @@ Only two complete packages are offered:
 
 Maps are MSOS components and are not distributed as separate user-facing downloads.
 
+The OS also includes an optional Wake Nodes manager. It works with the separate
+[CC Wake Nodes](https://github.com/cogilabs/CC-Wake-Nodes) mod when a `wake_controller`
+is attached. If the mod or peripheral is absent, the manager reports that the feature is
+unavailable and exits normally; no other MSOS program depends on the mod.
+
 * **Installer:**.
 `wget run https://raw.githubusercontent.com/ZonaCZO/Military-system/main/install/install.lua`
 
