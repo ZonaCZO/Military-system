@@ -36,6 +36,8 @@ installs the same program as `/update.lua`. It detects the installation type,
 downloads the current official installer and replaces managed programs and icons.
 Network configuration and operational data are preserved. On an ambiguous computer,
 run `updater os` or `update server` explicitly.
+Update downloads include a cache-busting value so one update run cannot mix older cached
+programs with a newer installer.
 
 * **Installer:**.
 `wget run https://raw.githubusercontent.com/ZonaCZO/Military-system/main/install/install.lua`
