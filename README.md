@@ -8,7 +8,12 @@ A specialized collection of ComputerCraft programs for secure file management, n
 
 ## 📁 Installer
 
-You need to choose between commander system and server.
+Only two complete packages are offered:
+
+* **MSOS Command OS** — the headquarters OS, including tactical maps, radar, browsers, icons and required drivers.
+* **Central Server Core** — the central network server and all required server modules.
+
+Maps are MSOS components and are not distributed as separate user-facing downloads.
 
 * **Installer:**.
 `wget run https://raw.githubusercontent.com/ZonaCZO/Military-system/main/install/install.lua`
@@ -18,8 +23,8 @@ You need to choose between commander system and server.
 
 1. Open your ComputerCraft terminal.
 2. Enable CC:Tweaked HTTP downloads for installation. Attach a wireless or wired modem for the in-game network; a modem does not enable HTTP access.
-3. Type the `wget run` command listed under the desired program.
-4. Run the program by typing its name.
+3. Run the command and select `1` for MSOS or `2` for Central Server Core.
+4. Existing network configuration and saved operational data are preserved when program files are updated.
 
 
 ---
