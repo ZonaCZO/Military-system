@@ -1,5 +1,6 @@
 local args = {...}
 local BASE = "https://raw.githubusercontent.com/ZonaCZO/Military-system/main/"
+local CACHE_BUSTER = tostring(os.epoch("utc"))
 
 term.clear()
 term.setCursorPos(1,1)
@@ -38,7 +39,8 @@ local function download(url, path)
     local dir = fs.getDir(path)
     if dir ~= '' then fs.makeDir(dir) end
     print("Downloading " .. path .. "...")
-    local ok = shell.run("wget", BASE .. url, temporary)
+    local separator = url:find("?",1,true) and "&" or "?"
+    local ok = shell.run("wget", BASE .. url .. separator .. "msos_cb=" .. CACHE_BUSTER, temporary)
     if not ok or not fs.exists(temporary) or fs.getSize(temporary) == 0 then
         term.setTextColor(colors.red)
         print("ERROR downloading: " .. url)
