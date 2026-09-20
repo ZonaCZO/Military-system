@@ -263,7 +263,7 @@ local function downloadProgram(item)
     local installer = ".msos-installer.lua"
     if fs.exists(installer) then fs.delete(installer) end
     local ok = shell.run("wget",
-        "https://raw.githubusercontent.com/ZonaCZO/Military-system/main/install/install.lua",
+        "https://raw.githubusercontent.com/ZonaCZO/Military-system/main/install/install.lua?msos_cb=" .. tostring(os.epoch("utc")),
         installer)
     if not ok or not fs.exists(installer) then
         term.setTextColor(colors.red); print("Installer download failed."); sleep(2); return
