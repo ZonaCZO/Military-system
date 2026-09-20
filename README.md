@@ -26,6 +26,8 @@ the headquarters computer with `wake grant <HQ_COMPUTER_ID>`. The headquarters W
 Controller can then load the server chunk before opening network applications. Use
 `wake status`, `wake revoke <ID>`, or `wake help` for administration. If the mod is absent,
 the utility exits normally and the server core remains independent from it.
+These commands can be entered directly at the Central Server `ADM>` console; opening the
+normal CraftOS shell is not required.
 
 ## Updating
 
