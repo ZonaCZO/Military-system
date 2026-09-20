@@ -33,9 +33,8 @@ local blacklist = {
 local mode = "HOME"
 local programs = {}
 local shopItems = {
-    {name="Worm", code="4YqH58kM", desc="Tunnel Digger"},
-    {name="Chat", code="8i7WjZ6b", desc="Simple Chat"},
-    {name="Paint", code="f2819231", desc="Official Paint"}
+    {name="MSOS", choice="1", desc="Full command OS with maps"},
+    {name="Server_Core", choice="2", desc="Central server core"}
 }
 
 -- === УПРАВЛЕНИЕ ===
@@ -238,14 +237,18 @@ local function downloadProgram(item)
     local w, h = term.getSize()
     paintutils.drawFilledBox(5, math.floor(h/2)-2, w-5, math.floor(h/2)+2, colors.blue)
     term.setCursorPos(7, math.floor(h/2)); term.setTextColor(colors.white); term.setBackgroundColor(colors.blue)
-    write("Downloading " .. item.name .. "...")
+    write("Installing " .. item.name .. "...")
     if not http then return end
-    
-    local fileName = fs.combine(prDir, item.name..".lua")
-    shell.run("pastebin", "get", item.code, fileName)
-    
-    autoScan()
-    sleep(1)
+
+    local installer = ".msos-installer.lua"
+    if fs.exists(installer) then fs.delete(installer) end
+    local ok = shell.run("wget",
+        "https://raw.githubusercontent.com/ZonaCZO/Military-system/main/install/install.lua",
+        installer)
+    if not ok or not fs.exists(installer) then
+        term.setTextColor(colors.red); print("Installer download failed."); sleep(2); return
+    end
+    shell.run(installer, item.choice)
 end
 
 -- === MAIN LOOP ===
