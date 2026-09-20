@@ -56,10 +56,19 @@ local function mkdir(path)
     if not fs.exists(path) then fs.makeDir(path) end
 end
 
+local function removeLegacyKeyboardStartup()
+    local legacy = "startup/cyrillic.lua"
+    if fs.exists(legacy) and not fs.isDir(legacy) then
+        fs.delete(legacy)
+        print("Removed obsolete global keyboard startup.")
+    end
+end
+
 -- =========================
 -- 1. COMMAND PC (MSOS)
 -- =========================
 if choice == "1" then
+    removeLegacyKeyboardStartup()
     print("\nCreating directories...")
     mkdir("pr")
     mkdir("sys")
@@ -113,6 +122,7 @@ if choice == "1" then
 -- 2. CENTRAL SERVER
 -- =========================
 elseif choice == "2" then
+    removeLegacyKeyboardStartup()
     print("\nCreating Server Directories...")
     mkdir("data")
     mkdir("data/archive")
