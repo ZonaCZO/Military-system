@@ -507,6 +507,10 @@ local function adminLoop()
             end
             print("Press Enter...")
             read()
+        elseif cmd and cmd ~= "" then
+            print("Unknown command: " .. tostring(cmd))
+            print("Use one of the commands shown above.")
+            sleep(2)
         end
     end
 end
