@@ -1,3 +1,4 @@
+local args = {...}
 local BASE = "https://raw.githubusercontent.com/ZonaCZO/Military-system/main/"
 
 term.clear()
@@ -7,10 +8,12 @@ print("=== MILITARY SYSTEM V14.3 ===")
 term.setTextColor(colors.white)
 print("1 - Command PC (HQ / MSOS)")
 print("2 - Central Server (Core)")
-print("3 - Legacy map server (retired; use Central Server)")
 print(string.rep("-", 29))
-write("Select installation (1-3): ")
-local choice = read()
+local choice = args[1]
+if choice ~= "1" and choice ~= "2" then
+    write("Select installation (1-2): ")
+    choice = read()
+end
 print('Programs will be replaced. Network settings and saved data are preserved.')
 
 local function backupProgram(path)
@@ -137,10 +140,6 @@ elseif choice == "2" then
     else print('Existing startup.lua preserved.') end
     print("\nAuto-boot configured for Server.")
 
-elseif choice == "3" then
-    print("Dedicated map host is retired. Update Central Server (option 2).")
-    print("Attach the front_map lectern there; configure data/front_map/groups.json.")
-    return
 else
     term.setTextColor(colors.red)
     print("Invalid choice. Installation aborted.")
