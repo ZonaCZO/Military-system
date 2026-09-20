@@ -32,6 +32,9 @@ local blacklist = {
 
 local mode = "HOME"
 local programs = {}
+local homePage = 1
+local homePages = 1
+local pagePrevX, pageNextX = nil, nil
 local shopItems = {
     {name="MSOS", choice="1", desc="Full command OS with maps"},
     {name="Server_Core", choice="2", desc="Central server core"}
@@ -157,13 +160,22 @@ local function drawHome()
     local w, h = term.getSize()
     local x, y = 2, 3
     local spacing = 8
+    local columns = math.max(1, math.floor((w - 1) / spacing))
+    local rows = math.max(1, math.floor((h - 4) / 7))
+    local perPage = columns * rows
+    homePages = math.max(1, math.ceil(#programs / perPage))
+    homePage = math.max(1, math.min(homePage, homePages))
+    for _,prog in ipairs(programs) do prog.clickBounds=nil end
     
     if #programs == 0 then
         term.setCursorPos(2, 3); term.setTextColor(colors.red); print("No programs found.")
         return
     end
 
-    for i, prog in ipairs(programs) do
+    local first = (homePage - 1) * perPage + 1
+    local last = math.min(#programs, first + perPage - 1)
+    for i = first, last do
+        local prog = programs[i]
         if prog.icon then
             local img = paintutils.loadImage(prog.icon)
             if img then
@@ -189,6 +201,14 @@ local function drawHome()
         x = x + spacing
         if x + 6 > w then x = 2; y = y + 7 end
     end
+
+    local pageText = "<  PAGE " .. homePage .. "/" .. homePages .. "  >"
+    local pageX = math.max(1, math.floor((w - #pageText) / 2) + 1)
+    term.setCursorPos(pageX, h-1); term.setBackgroundColor(bgCol)
+    term.setTextColor(homePages > 1 and colors.white or colors.lightGray)
+    write(pageText)
+    pagePrevX = pageX
+    pageNextX = pageX + #pageText - 1
 end
 
 local function drawShop()
@@ -263,12 +283,23 @@ while true do
     if mode == "HOME" then drawHome()
     elseif mode == "SHOP" then drawShop() end
     
-    local event, button, x, y = os.pullEvent("mouse_click")
+    local event, p1, p2, p3 = os.pullEvent()
     local w, h = term.getSize()
-    
-    if y == h then
+
+    if event == "key" and mode == "HOME" then
+        if p1 == keys.left or p1 == keys.pageUp then homePage = math.max(1,homePage-1)
+        elseif p1 == keys.right or p1 == keys.pageDown then homePage = math.min(homePages,homePage+1) end
+    elseif event == "mouse_scroll" and mode == "HOME" then
+        if p1 > 0 then homePage=math.min(homePages,homePage+1)
+        else homePage=math.max(1,homePage-1) end
+    elseif event == "mouse_click" then
+      local button,x,y = p1,p2,p3
+      if y == h then
         if x <= math.floor(w/2) then mode = "HOME" else mode = "SHOP" end
-    elseif mode == "HOME" then
+      elseif mode == "HOME" and y == h-1 and homePages > 1 then
+        if x <= math.floor(w/2) then homePage=math.max(1,homePage-1)
+        else homePage=math.min(homePages,homePage+1) end
+      elseif mode == "HOME" then
         for _, prog in ipairs(programs) do
             if prog.clickBounds and x >= prog.clickBounds.x1 and x <= prog.clickBounds.x2 
                and y >= prog.clickBounds.y1 and y <= prog.clickBounds.y2 then
@@ -278,11 +309,12 @@ while true do
                 break
             end
         end
-    elseif mode == "SHOP" then
+      elseif mode == "SHOP" then
         for _, item in ipairs(shopItems) do
             if item.clickBounds and x >= item.clickBounds.x1 and x <= item.clickBounds.x2 and y == item.clickBounds.y1 then
                downloadProgram(item) 
             end
         end
+      end
     end
 end
