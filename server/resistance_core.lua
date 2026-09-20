@@ -419,6 +419,7 @@ local function adminLoop()
         print("add               - Add User")
         print("del <ID>          - Delete User")
         print("list              - Show Database")
+        print("wake [command]    - Wake Node administration")
         
         term.setCursorPos(1, 10)
         term.setTextColor(colors.white)
@@ -493,6 +494,16 @@ local function adminLoop()
                     local sq = u.squad or "NONE"
                     print(u.id .. " | " .. sq .. " | " .. r .. " | " .. (u.name or "Unknown"))
                 end
+            end
+            print("Press Enter...")
+            read()
+        elseif cmd == "wake" then
+            if not fs.exists("wake.lua") then
+                print("Wake utility is not installed. Run update first.")
+            else
+                local wakeArgs = {}
+                for i = 2, #args do wakeArgs[#wakeArgs + 1] = args[i] end
+                shell.run("wake.lua", table.unpack(wakeArgs))
             end
             print("Press Enter...")
             read()
