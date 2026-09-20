@@ -1,8 +1,8 @@
 -- ==========================================
 -- === CYRILLIC KEYBOARD DRIVER ===
 -- ==========================================
-local cyrdrv = require("system.cyrillic_driver")
-cyrdrv.start("RU")
+local textInput=require("system.text_input")
+local function safeRead(mask,mode,maxLength) return textInput.read({mask=mask,mode=mode,maxLength=maxLength}) end
 
 -- ==========================================
 -- === STRATEGIC PLAN BROWSER V1.0 ===
@@ -53,10 +53,10 @@ else
     term.clear(); term.setCursorPos(1,1)
     print("--- NETWORK SETUP ---")
     
-    write("Network ID: "); local input = read()
+    write("Network ID: "); local input = safeRead(nil,"EN",48)
     if input ~= "" then PROTOCOL = input end
     
-    write("Encryption Key: "); local kInp = read()
+    write("Encryption Key: "); local kInp = safeRead("*","EN",64)
     if kInp ~= "" then 
         KEY = hashNetKey(kInp) -- Хешируем введенный пароль!
     end
@@ -95,8 +95,8 @@ local function login()
         
         if msgText ~= "" then term.setTextColor(colors.red); print(msgText); term.setTextColor(colors.white) end
         
-        write("Command ID: "); local inputID = string.upper(read())
-        write("Password: "); local inputPass = read("*")
+        write("Command ID: "); local inputID = string.upper(safeRead(nil,"EN",24))
+        write("Password: "); local inputPass = safeRead("*","EN",64)
         
         if not serverID then serverID = rednet.lookup(PROTOCOL, "central_core") end
         

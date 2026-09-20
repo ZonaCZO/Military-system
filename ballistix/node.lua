@@ -74,8 +74,9 @@ end
 function redrun.start(func, name)
     local id = #coroutines+1; coroutines[id] = {coro = coroutine.create(func), name = name}; return id
 end
-redrun.init()
-redrun.start(cyrrun, 'cyrrun')
+-- Focused input replaces the legacy global character injector.
+local textInput=require("system.text_input")
+local function safeRead(mask,mode,maxLength) return textInput.read({mask=mask,mode=mode,maxLength=maxLength}) end
 
 -- ==========================================
 -- === TACTICAL NODE DAEMON V1.3 ===
@@ -123,8 +124,8 @@ else
     term.setTextColor(colors.green)
     print("=== INITIAL NODE SETUP ===")
     term.setTextColor(colors.white)
-    write("Network ID: "); PROTOCOL = read()
-    write("Network Key: "); KEY = read()
+    write("Network ID: "); PROTOCOL = safeRead(nil,"EN",48)
+    write("Network Key: "); KEY = safeRead("*","EN",64)
     
     local f = fs.open(".net_config.txt", "w")
     f.writeLine(PROTOCOL); f.writeLine(KEY); f.close()
@@ -134,13 +135,13 @@ else
     print("2. Anti-Ballistic (ПРО)")
     print("3. Early Warning Radar (Радар)")
     write("> ")
-    local sel = read()
+    local sel = safeRead(nil,"EN",8)
     if sel == "2" then NODE_TYPE = "ABM"
     elseif sel == "3" then NODE_TYPE = "RADAR"
     else NODE_TYPE = "SILO" end
     
     write("\nEnter Node Designation (e.g. ALPHA-1): ")
-    NODE_ID = string.upper(read())
+    NODE_ID = string.upper(safeRead(nil,"EN",32))
     
     local f2 = fs.open(configFile, "w")
     f2.writeLine(NODE_ID); f2.writeLine(NODE_TYPE); f2.close()

@@ -74,8 +74,9 @@ end
 function redrun.start(func, name)
     local id = #coroutines+1; coroutines[id] = {coro = coroutine.create(func), name = name}; return id
 end
-redrun.init()
-redrun.start(cyrrun, 'cyrrun')
+-- Do not start the legacy global keyboard event injector.
+local textInput=require("system.text_input")
+local function safeRead(mask,mode,maxLength) return textInput.read({mask=mask,mode=mode,maxLength=maxLength}) end
 
 -- ==========================================
 -- === STRATEGIC COMMAND CENTER V1.1 ===
@@ -136,8 +137,8 @@ local function login()
         term.setTextColor(colors.red); print("=== NUCLEAR COMMAND CENTER ==="); term.setTextColor(colors.white)
         if msgText ~= "" then term.setTextColor(colors.red); print(msgText); term.setTextColor(colors.white) end
         
-        write("Commander ID: "); local inputID = string.upper(read())
-        write("Password: "); local inputPass = read("*")
+        write("Commander ID: "); local inputID = string.upper(safeRead(nil,"EN",24))
+        write("Password: "); local inputPass = safeRead("*","EN",64)
         
         if sendEncrypted({type="LOGIN", userID=inputID, userPass=inputPass, role="commander"}) then
             local id, msg = receiveEncrypted(3)
@@ -290,18 +291,18 @@ local function inputLoop()
                 
                 term.setBackgroundColor(colors.black)
                 term.setCursorPos(textX, 12); term.setTextColor(colors.yellow)
-                write("Target X: "); local tx = tonumber(read())
+                write("Target X: "); local tx = tonumber(safeRead(nil,"EN",16))
                 
                 term.setCursorPos(textX, 13);
-                write("Target Y: "); local ty = tonumber(read())
+                write("Target Y: "); local ty = tonumber(safeRead(nil,"EN",16))
                 
                 term.setCursorPos(textX, 14);
-                write("Target Z: "); local tz = tonumber(read())
+                write("Target Z: "); local tz = tonumber(safeRead(nil,"EN",16))
                 
                 if tx and ty and tz then
                     term.setCursorPos(textX, 16); term.setTextColor(colors.red)
                     write("CONFIRM (YES): ")
-                    if read() == "YES" then
+                    if safeRead(nil,"EN",8) == "YES" then
                         sendEncrypted({
                             type = "SILO_FIRE_CMD",
                             userID = myProfile.id,

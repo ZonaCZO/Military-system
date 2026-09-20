@@ -2,8 +2,8 @@
 -- === CYRILLIC KEYBOARD DRIVER ===
 -- ==========================================
 -- Используем модульный cyrillic драйвер для поддержки RU/UA/BY
-local cyrdrv = require("system.cyrillic_driver")
-cyrdrv.start("RU")
+local textInput=require("system.text_input")
+local function safeRead(mask,mode,maxLength) return textInput.read({mask=mask,mode=mode,maxLength=maxLength}) end
 
 -- ==========================================
 -- === FRONT COMMAND CENTER V14.2 ===
@@ -37,10 +37,10 @@ else
     term.clear(); term.setCursorPos(1,1)
     print("--- NETWORK SETUP ---")
     
-    write("Network ID: "); local input = read()
+    write("Network ID: "); local input = safeRead(nil,"EN",48)
     if input ~= "" then PROTOCOL = input end
     
-    write("Encryption Key: "); local kInp = read()
+    write("Encryption Key: "); local kInp = safeRead("*","EN",64)
     if kInp ~= "" then 
         KEY = hashNetKey(kInp) -- Хешируем введенный пароль!
     end

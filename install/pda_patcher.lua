@@ -1,7 +1,7 @@
 -- Downloads are staged before installed files change. Never wipes the disk.
 local BASE='https://raw.githubusercontent.com/ZonaCZO/Military-system/main/'
 local files={{'patch/tracker.lua','tracker.lua'},{'patch/rebel.lua','Soldier.lua'},
-  {'patch/PDAOS.lua','PDAOS.lua'},{'system/cyrillic_driver.lua','system/cyrillic_driver.lua'}}
+  {'patch/PDAOS.lua','PDAOS.lua'},{'system/text_input.lua','system/text_input.lua'}}
 local function install(root)
   local function backupProgram(path)
     if fs.exists(path) then

@@ -99,7 +99,7 @@ if choice == "1" then
     
     print("\nInstalling Base System...")
     download("system/system.lua", "system.lua")
-    download("system/cyrillic_driver.lua", "pr/system/cyrillic_driver.lua")
+    download("system/text_input.lua", "pr/system/text_input.lua")
     -- Applications start the driver themselves. Do not install a second startup driver.
 
     if not fs.exists('startup.lua') then
@@ -123,11 +123,13 @@ elseif choice == "2" then
     mkdir("data/map/sectors")
     mkdir("server")
     mkdir("server/modules")
+    mkdir("system")
 
     print("\nDownloading Server Core...")
     download("server/resistance_core.lua", "server.lua")
     download("system/updater.lua", "update.lua")
     download("system/wake_server.lua", "wake.lua")
+    download("system/text_input.lua", "system/text_input.lua")
 
     print("\nInstalling Keyboard Driver...")
     mkdir("startup")

@@ -1,8 +1,8 @@
 -- ==========================================
 -- === CYRILLIC KEYBOARD DRIVER ===
 -- ==========================================
-local cyrdrv = require("system.cyrillic_driver")
-cyrdrv.start("RU")
+local textInput=require("system.text_input")
+local function safeRead(mask,mode,maxLength) return textInput.read({mask=mask,mode=mode,maxLength=maxLength}) end
 
 -- ==========================================
 -- === TACTICAL ASCII RADAR V1.1 ===
@@ -61,10 +61,10 @@ else
     term.clear(); term.setCursorPos(1,1)
     print("--- NETWORK SETUP ---")
     
-    write("Network ID: "); local input = read()
+    write("Network ID: "); local input = safeRead(nil,"EN",48)
     if input ~= "" then PROTOCOL = input end
     
-    write("Encryption Key: "); local kInp = read()
+    write("Encryption Key: "); local kInp = safeRead("*","EN",64)
     if kInp ~= "" then 
         KEY = hashNetKey(kInp) -- Хешируем введенный пароль!
     end
@@ -109,8 +109,8 @@ local function login()
         end
         
         term.setTextColor(colors.white)
-        write("Command ID: "); local id = string.upper(read())
-        write("Password: "); local pass = read("*")
+        write("Command ID: "); local id = string.upper(safeRead(nil,"EN",24))
+        write("Password: "); local pass = safeRead("*","EN",64)
         
         serverID = rednet.lookup(PROTOCOL, "central_core")
         
@@ -137,7 +137,7 @@ login()
 term.setBackgroundColor(colors.black); term.clear(); term.setCursorPos(1,1)
 term.setTextColor(colors.yellow)
 write("Enter Front ID to scan (e.g. 'tokmak'): ")
-currentFrontId = string.lower(read())
+currentFrontId = string.lower(safeRead(nil,"EN",48))
 
 local markerIcons = {
     ally = {char="A", color=colors.green},

@@ -1,9 +1,5 @@
--- ==========================================
--- === CYRILLIC KEYBOARD DRIVER ===
--- ==========================================
--- Используем модульный cyrillic драйвер для поддержки RU/UA/BY
-local cyrdrv = require("system.cyrillic_driver")
-cyrdrv.start("RU")  -- Поддерживаемые локали: "RU", "UA", "BY"
+local textInput=require("system.text_input")
+local function safeRead(mask,mode,maxLength) return textInput.read({mask=mask,mode=mode,maxLength=maxLength}) end
 
 -- ==========================================
 -- === GENERAL TERMINAL V14.2 (RC4 + INTEL) ===
@@ -54,10 +50,10 @@ else
     term.clear(); term.setCursorPos(1,1)
     print("--- NETWORK SETUP ---")
     
-    write("Network ID: "); local input = read()
+    write("Network ID: "); local input = safeRead(nil,"EN",48)
     if input ~= "" then PROTOCOL = input end
     
-    write("Encryption Key: "); local kInp = read()
+    write("Encryption Key: "); local kInp = safeRead("*","EN",64)
     if kInp ~= "" then 
         KEY = hashNetKey(kInp) -- Хешируем введенный пароль!
     end
@@ -97,8 +93,8 @@ local function login()
         
         if msgText ~= "" then term.setTextColor(colors.red); print(msgText); term.setTextColor(colors.white) end
         
-        write("General ID: "); local inputID = string.upper(read())
-        write("Password: "); local inputPass = read("*")
+        write("General ID: "); local inputID = string.upper(safeRead(nil,"EN",24))
+        write("Password: "); local inputPass = safeRead("*","EN",64)
         
         if not serverID then serverID = rednet.lookup(PROTOCOL, "central_core") end
         
@@ -241,7 +237,7 @@ local function inputLoop()
         elseif activeTab == "INTEL" and key == keys.enter then
             term.setCursorPos(1, h-1); term.setBackgroundColor(colors.black); term.setTextColor(colors.yellow)
             write(" CHANNEL (e.g. SQD_ALPHA or CMD): ")
-            local chan = read()
+            local chan = safeRead(nil,"EN",24)
             if chan ~= "" then
                 archiveLogs = {} 
                 sendEncrypted({
@@ -256,7 +252,7 @@ local function inputLoop()
         elseif activeTab == "CMD" and key == keys.enter then
             term.setCursorPos(1, h-1); term.setTextColor(colors.red)
             write(" COMMAND: ")
-            local txt = read()
+            local txt = safeRead(nil,nil,160)
             if txt ~= "" then
                 sendEncrypted({type="CMD_CHAT", userID=myProfile.id, token=myToken, text=txt})
             end

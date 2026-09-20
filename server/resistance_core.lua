@@ -78,8 +78,10 @@ end
 function redrun.start(func, name)
     local id = #coroutines+1; coroutines[id] = {coro = coroutine.create(func), name = name}; return id
 end
-redrun.init()
-redrun.start(cyrrun, 'cyrrun')
+-- Legacy global driver intentionally not started: it leaked queued characters
+-- into later prompts. All editable fields use the focused input module below.
+local textInput=require("system.text_input")
+local function safeRead(mask,mode,maxLength) return textInput.read({mask=mask,mode=mode,maxLength=maxLength}) end
 
 -- ==========================================
 -- === CENTRAL DB V14.1 (Modular Core + Admin) ===
@@ -148,10 +150,10 @@ else
     term.clear(); term.setCursorPos(1,1)
     print("--- NETWORK SETUP ---")
     
-    write("Network ID: "); local input = read()
+    write("Network ID: "); local input = safeRead(nil,"EN",48)
     if input ~= "" then PROTOCOL = input end
     
-    write("Encryption Key: "); local kInp = read()
+    write("Encryption Key: "); local kInp = safeRead("*","EN",64)
     if kInp ~= "" then 
         KEY = hashNetKey(kInp) -- Хешируем введенный пароль!
     end
@@ -424,7 +426,7 @@ local function adminLoop()
         term.setCursorPos(1, 10)
         term.setTextColor(colors.white)
         write("ADM> ")
-        local input = read()
+        local input = safeRead(nil,"EN",160)
         local args = {}
         for w in input:gmatch("%S+") do table.insert(args, w) end
         local cmd = args[1]
@@ -440,23 +442,23 @@ local function adminLoop()
             print("Squad Removed.")
             sleep(1)
         elseif cmd == "add" then
-            write("ID: ") local id = string.upper(read())
-            write("Pass: ") local pass = read()
+            write("ID: ") local id = string.upper(safeRead(nil,"EN",24))
+            write("Pass: ") local pass = safeRead("*","EN",64)
             print("--- SQUADS ---")
             for sq, _ in pairs(squads) do write(sq.." ") end
             print("\n--------------")
-            write("Squad: ") local sq = string.upper(read())
+            write("Squad: ") local sq = string.upper(safeRead(nil,"EN",24))
             
             if not squads[sq] then
                 print("Squad not found! Use 'mksq' first.")
                 sleep(2)
             else
-                write("Rank: ") local rk = read()
-                write("Name: ") local nm = read()
-                write("Nation: ") local nat = read()
+                write("Rank: ") local rk = safeRead(nil,nil,48)
+                write("Name: ") local nm = safeRead(nil,nil,48)
+                write("Nation: ") local nat = safeRead(nil,nil,48)
                 print("Role: 1.SOLDIER 2.COMMANDER 3.GENERAL")
                 write("> ")
-                local rInput = read()
+                local rInput = safeRead(nil,"EN",16)
                 local rl = "soldier"
                 if rInput == "2" then rl = "commander"
                 elseif rInput == "3" then rl = "general" end
