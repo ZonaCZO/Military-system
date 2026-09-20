@@ -125,6 +125,7 @@ elseif choice == "2" then
     print("\nDownloading Server Core...")
     download("server/resistance_core.lua", "server.lua")
     download("system/updater.lua", "update.lua")
+    download("system/wake_server.lua", "wake.lua")
 
     print("\nInstalling Keyboard Driver...")
     mkdir("startup")
