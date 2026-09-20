@@ -10,6 +10,8 @@ local areaIndex, left, top, zoom = 1, 0, 0, 1
 local fitted = false
 local configSignature=nil
 local hitCells = {}
+local controlCells = {}
+local dragLast = nil
 -- CC has 16 palette entries: reserve custom blended terrain colours.
 local bases={{0.18,0.65,0.22},{0.95,0.82,0.12},{0.80,0.18,0.16}}
 local statusColors={colors.green,colors.yellow,colors.red}
@@ -68,6 +70,28 @@ local function fit()
   left=x1-math.floor((w*zoom-(x2-x1+1))/2)
   top=z1-math.floor((math.max(1,h-5)*zoom-(z2-z1+1))/2)
   fitted = true
+end
+local function panView(dx,dz)
+  local w,h=screen.getSize()
+  local stepX=math.max(zoom,math.floor(w*zoom/4))
+  local stepZ=math.max(zoom,math.floor(math.max(1,h-5)*zoom/4))
+  left=left+dx*stepX;top=top+dz*stepZ;selected=nil
+end
+local function setZoom(value)
+  local newZoom=math.max(1,math.min(16,value))
+  if newZoom==zoom then return end
+  local w,h=screen.getSize()
+  local centerX=left+w*zoom/2
+  local centerZ=top+math.max(1,h-5)*zoom/2
+  zoom=newZoom
+  left=math.floor(centerX-w*zoom/2)
+  top=math.floor(centerZ-math.max(1,h-5)*zoom/2)
+end
+local function runControl(action)
+  if action=='west' then panView(-1,0) elseif action=='east' then panView(1,0)
+  elseif action=='north' then panView(0,-1) elseif action=='south' then panView(0,1)
+  elseif action=='in' then setZoom(zoom-1) elseif action=='out' then setZoom(zoom+1)
+  elseif action=='center' then fit();selected=nil end
 end
 local host=nil
 local protocol='default_net'
@@ -219,6 +243,7 @@ local function draw()
   if not data then line(3,message); return end
   line(2,'N ^ (-Z) W < (-X) E > (+X) S v (+Z) | Area '..areaIndex)
   hitCells={}
+  controlCells={}
   for row=1,h-5 do
     local text,fgs,bgs={},{},{}
     for col=1,w do
@@ -265,7 +290,12 @@ local function draw()
     line(h-2,'Green own | Yellow front | Red occupied | zoom '..zoom)
     line(h-1,message)
   end
-  line(h,'Arrows pan +/- zoom Tab area R refresh A point D delete Q exit',colors.lightGray)
+  local controls='[<][^][v][>][+][-][C]'
+  line(h,controls..'  move/zoom/center | Q exit',colors.lightGray)
+  local actions={'west','north','south','east','in','out','center'}
+  for i,action in ipairs(actions) do
+    for x=(i-1)*3+1,i*3 do controlCells[x..','..h]=action end
+  end
 end
 local function addPoint()
   if not selected or not data then return end
@@ -301,15 +331,29 @@ local function run()
     elseif e=='term_resize' or e=='monitor_resize' then fit()
     elseif (e=='mouse_click' and screen==original) or (e=='monitor_touch' and screen~=original and a==peripheral.getName(screen)) then
       local w,h=screen.getSize()
-      if b and c then selected=hitCells[b..','..c] end
+      if b and c then
+        local action=controlCells[b..','..c]
+        if action then runControl(action) else selected=hitCells[b..','..c] end
+        if e=='mouse_click' then dragLast={x=b,y=c} end
+      end
+    elseif e=='mouse_drag' and screen==original and dragLast then
+      local x,y=b,c
+      if x and y and y>=3 and y<=select(2,screen.getSize())-3 then
+        left=left-(x-dragLast.x)*zoom;top=top-(y-dragLast.y)*zoom
+        dragLast={x=x,y=y};selected=nil
+      end
+    elseif e=='mouse_up' then dragLast=nil
     elseif e=='key' then
-      if a==keys.left then left=left-zoom elseif a==keys.right then left=left+zoom
-      elseif a==keys.up then top=top-zoom elseif a==keys.down then top=top+zoom
+      if a==keys.left then panView(-1,0) elseif a==keys.right then panView(1,0)
+      elseif a==keys.up then panView(0,-1) elseif a==keys.down then panView(0,1)
+      elseif a==keys.home then fit();selected=nil
       elseif a==keys.tab and data and #data.areas>0 then areaIndex=areaIndex%#data.areas+1; fit(); selected=nil end
     elseif e=='char' then
       if a=='q' then break elseif a=='r' then refresh() elseif a=='a' then addPoint()
-      elseif a=='d' then deletePoint() elseif a=='+' or a=='=' then zoom=math.max(1,zoom-1)
-      elseif a=='-' then zoom=math.min(16,zoom+1) end
+      elseif a=='d' then deletePoint() elseif a=='+' or a=='=' then setZoom(zoom-1)
+      elseif a=='-' then setZoom(zoom+1) elseif a=='w' then panView(0,-1)
+      elseif a=='s' then panView(0,1)
+      elseif a=='c' then fit();selected=nil end
     end
   end
 end
