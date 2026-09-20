@@ -20,6 +20,13 @@ The OS also includes an optional Wake Nodes manager. It works with the separate
 is attached. If the mod or peripheral is absent, the manager reports that the feature is
 unavailable and exits normally; no other MSOS program depends on the mod.
 
+Central Server installations include the optional `/wake.lua` setup utility. Attach a
+Wake Node directly to the server computer, run `wake setup central_server`, then authorize
+the headquarters computer with `wake grant <HQ_COMPUTER_ID>`. The headquarters Wake
+Controller can then load the server chunk before opening network applications. Use
+`wake status`, `wake revoke <ID>`, or `wake help` for administration. If the mod is absent,
+the utility exits normally and the server core remains independent from it.
+
 ## Updating
 
 The complete MSOS includes an `updater` application and icon. The Central Server
