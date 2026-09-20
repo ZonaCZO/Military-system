@@ -32,7 +32,7 @@ if not http then
 end
 if fs.exists(INSTALLER_FILE) then fs.delete(INSTALLER_FILE) end
 print('Downloading current installer...')
-local ok=shell.run('wget',INSTALLER_URL,INSTALLER_FILE)
+local ok=shell.run('wget',INSTALLER_URL..'?msos_cb='..tostring(os.epoch('utc')),INSTALLER_FILE)
 if not ok or not fs.exists(INSTALLER_FILE) or fs.getSize(INSTALLER_FILE)==0 then
   if fs.exists(INSTALLER_FILE) then fs.delete(INSTALLER_FILE) end
   term.setTextColor(colors.red);print('Update download failed. Existing installation was not changed.');return
